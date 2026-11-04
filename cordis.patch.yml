@@ -1,0 +1,4 @@
+- insert:
+    - id: opencode-go-panel
+      name: 'dsh-opencode-go-panel'
+      config: {}
