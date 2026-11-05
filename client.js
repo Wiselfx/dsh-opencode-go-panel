@@ -605,7 +605,7 @@ window.__ModuleLoader__.load({
         try {
           const response = await fetch(`${API}/connect`, {
             method: 'POST',
-            headers: { 'content-type': 'application/json', 'x-opencode-go-request': '1' },
+            headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ apiKey: key.trim() }),
           })
           const body = await response.json().catch(() => null)

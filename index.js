@@ -5,11 +5,10 @@
  */
 import { createProvider } from './data.js'
 
-export const inject = ['webServer']
+export const inject = ['webServer', 'connection']
 
 const STATUS_PATH = '/_dsh/opencode-go/status'
 const CONNECT_PATH = '/_dsh/opencode-go/connect'
-const REQUEST_HEADER = 'x-opencode-go-request'
 
 function sendJson(res, status, body) {
   const data = JSON.stringify(body)
@@ -37,34 +36,19 @@ function safeMessage(error) {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** Keep the JSON surface to the page that owns it, not arbitrary LAN clients. */
-function sameOrigin(req) {
-  const site = String(req.headers['sec-fetch-site'] || '')
-  if (site === 'same-origin') return true
-  const referer = String(req.headers.referer || '')
-  if (referer) {
-    try {
-      const host = String(req.headers.host || '')
-      const proto = String(req.headers['x-forwarded-proto'] || 'http')
-      return new URL(referer).origin === `${proto}://${host}`
-    } catch {
-      return false
-    }
-  }
-  return false
-}
-
 export function apply(ctx, config = {}) {
   const webServer = ctx.get('webServer')
-  if (!webServer) return
+  const connection = ctx.get('connection')
+  if (!webServer || !connection) return
   const provider = createProvider(ctx, config)
 
   const statusRoute = webServer.register({
     kind: 'exact',
     path: STATUS_PATH,
     async handler(req, res) {
-      if (!sameOrigin(req)) {
-        sendJson(res, 403, { ok: false, error: 'Same-origin request required' })
+      const rejection = connection.requestRejection(req)
+      if (rejection !== undefined) {
+        sendJson(res, rejection, { ok: false, error: rejection === 401 ? 'Unauthorized' : 'Forbidden' })
         return
       }
       try {
@@ -86,12 +70,9 @@ export function apply(ctx, config = {}) {
         sendJson(res, 405, { ok: false, error: 'Method not allowed' })
         return
       }
-      if (!sameOrigin(req)) {
-        sendJson(res, 403, { ok: false, error: 'Same-origin request required' })
-        return
-      }
-      if (req.headers[REQUEST_HEADER] !== '1') {
-        sendJson(res, 403, { ok: false, error: 'Missing request header' })
+      const rejection = connection.requestRejection(req)
+      if (rejection !== undefined) {
+        sendJson(res, rejection, { ok: false, error: rejection === 401 ? 'Unauthorized' : 'Forbidden' })
         return
       }
       const type = String(req.headers['content-type'] || '')
