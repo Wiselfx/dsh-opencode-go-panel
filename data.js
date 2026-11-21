@@ -138,6 +138,7 @@ function planFor(product, config, memberCount = 1) {
 }
 
 function usdFromMicroCents(value) {
+  if (value === null || value === undefined || value === '') return null
   const n = Number(value)
   return Number.isFinite(n) ? n / MICROCENTS_PER_USD : null
 }
@@ -306,6 +307,48 @@ async function fetchUsageForKeys(keys, config) {
         authorization: `Bearer ${candidate.key}`,
       })
       if (result.ok && result.body?.usage) {
+        return { ...result, candidate }
+      }
+      lastError = `HTTP ${result.status}`
+      if (result.status !== 401 && result.status !== 403) break
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error)
+    }
+  }
+  return { ok: false, candidate: keys[0], error: lastError || 'No API key found' }
+}
+
+/** Console billing balance directly with an API key. */
+async function fetchBillingForKeys(keys, config) {
+  let lastError = null
+  for (const candidate of keys) {
+    try {
+      const result = await fetchJson(`${config.apiOrigin.replace(/\/$/, '')}/console/api/billing/status`, {
+        authorization: `Bearer ${candidate.key}`,
+      })
+      if (result.ok && result.body) {
+        return { ...result, candidate }
+      }
+      lastError = `HTTP ${result.status}`
+      if (result.status !== 401 && result.status !== 403) break
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error)
+    }
+  }
+  return { ok: false, candidate: keys[0], error: lastError || 'No API key found' }
+}
+
+/** Exact Console status directly with an API key — no local OAuth sign-in needed.
+ *  Keys are workspace-scoped, so no x-org-id header is required.
+ *  Needs Usage:Read (Billing:Read also works for /billing/status). */
+async function fetchStatusForKeys(keys, config) {
+  let lastError = null
+  for (const candidate of keys) {
+    try {
+      const result = await fetchJson(`${config.apiOrigin.replace(/\/$/, '')}/console/api/go/status`, {
+        authorization: `Bearer ${candidate.key}`,
+      })
+      if (result.ok && result.body?.access) {
         return { ...result, candidate }
       }
       lastError = `HTTP ${result.status}`
@@ -493,12 +536,24 @@ async function buildSnapshot(ctx, config) {
       ? { authorization: `Bearer ${savedKeys[0].key}` }
       : {}
 
-  const [statusResult, usageResult, publicModels, workspaceModels] = await Promise.all([
+  const [oauthStatusResult, apiStatusResult, oauthBillingResult, apiBillingResult, usageResult, publicModels, workspaceModels] = await Promise.all([
     consoleLogin
       ? fetchJson(`${consoleLogin.server.replace(/\/$/, '')}/api/go/status`, {
         authorization: `Bearer ${consoleLogin.access}`,
         'x-org-id': consoleLogin.orgID,
       }).catch((error) => ({ ok: false, status: 0, error: snapshotError(error) }))
+      : Promise.resolve(null),
+    savedKeys.length
+      ? fetchStatusForKeys(savedKeys, config).catch((error) => ({ ok: false, status: 0, error: snapshotError(error) }))
+      : Promise.resolve(null),
+    consoleLogin
+      ? fetchJson(`${consoleLogin.server.replace(/\/$/, '')}/api/billing/status`, {
+        authorization: `Bearer ${consoleLogin.access}`,
+        'x-org-id': consoleLogin.orgID,
+      }).catch(() => ({ ok: false, status: 0 }))
+      : Promise.resolve(null),
+    savedKeys.length
+      ? fetchBillingForKeys(savedKeys, config).catch(() => ({ ok: false, status: 0 }))
       : Promise.resolve(null),
     fetchUsageForKeys(savedKeys, config),
     fetchModels(config, {}).catch(() => ({ data: [], authenticated: false })),
@@ -513,6 +568,10 @@ async function buildSnapshot(ctx, config) {
     ? publicModels
     : (workspaceModels || { data: [], authenticated: false })
 
+  const statusResult = oauthStatusResult?.ok
+    ? oauthStatusResult
+    : (apiStatusResult?.ok ? apiStatusResult : (oauthStatusResult || apiStatusResult))
+  const statusSource = oauthStatusResult?.ok ? 'oauth' : (apiStatusResult?.ok ? 'api-key' : null)
   const statusDto = statusResult?.ok ? statusResult.body : null
   const plan = planFor(statusDto?.product || config.plan, config, statusDto?.teamsUpgradePrice?.memberCount || 1)
   const meterList = statusDto
@@ -540,6 +599,9 @@ async function buildSnapshot(ctx, config) {
       renewalPending: Boolean(statusDto.renewalPending),
       nextPeriodPaid: Boolean(statusDto.nextPeriodPaid),
       useBalance: Boolean(statusDto.useBalance),
+      resumability: statusDto.resumability || null,
+      needsPaymentMethod: statusDto.resumability === 'needs-payment-method',
+      dataSource: null, // filled below
       accessStartsAt: Date.parse(access.startsAt || '') || null,
       accessEndsAt: Date.parse(access.endsAt || '') || null,
       monthlyLimit,
@@ -550,6 +612,11 @@ async function buildSnapshot(ctx, config) {
       upgrade: statusDto.upgradePrice ? {
         amount: usdFromMicroCents(statusDto.upgradePrice.amountMicroCents),
         currency: String(statusDto.upgradePrice.currency || 'usd').toUpperCase(),
+      } : null,
+      teams: statusDto.teamsUpgradePrice ? {
+        amount: usdFromMicroCents(statusDto.teamsUpgradePrice.amountMicroCents),
+        currency: String(statusDto.teamsUpgradePrice.currency || 'usd').toUpperCase(),
+        memberCount: Number(statusDto.teamsUpgradePrice.memberCount) || null,
       } : null,
     }
     if (subscription.cancelAtPeriodEnd) warnings.push('This Go plan is cancelled and will stop at the end of the current period.')
@@ -581,16 +648,31 @@ async function buildSnapshot(ctx, config) {
       workspaceName: null,
       upgrade: null,
     }
-    warnings.push('OpenCode sign-in was not found, so renewal state and exact spend come from the percentage usage API.')
+    warnings.push('OpenCode sign-in and API-key Console status were not found, so renewal state and exact spend come from the percentage usage API.')
   }
 
-  if (!consoleLogin) {
+  const billingDto = (oauthBillingResult?.ok ? oauthBillingResult.body : null)
+    || (apiBillingResult?.ok ? apiBillingResult.body : null)
+    || null
+  const billing = billingDto ? {
+    source: oauthBillingResult?.ok ? 'oauth' : 'api-key',
+    mode: billingDto.mode || billingDto.billingMode || null,
+    balance: usdFromMicroCents(billingDto.balanceMicroCents),
+    available: usdFromMicroCents(billingDto.availableMicroCents),
+    creditLimit: usdFromMicroCents(billingDto.creditLimitMicroCents),
+    canPurchaseCredits: billingDto.canPurchaseCredits ?? null,
+    canEnableAutoRecharge: billingDto.canEnableAutoRecharge ?? null,
+  } : null
+  if (subscription && statusSource) subscription.dataSource = statusSource
+
+  const consoleEffective = Boolean(consoleLogin) || statusSource === 'api-key'
+  if (!consoleEffective) {
     warnings.push('Sign in to OpenCode on this machine to unlock exact Console billing data.')
   }
   if (!savedKeys.length) {
     warnings.push('No OpenCode Go API key was found. Save one to load the usage API.')
   }
-  if (statusResult && !statusResult.ok && consoleLogin) {
+  if (statusResult && !statusResult.ok && (consoleLogin || savedKeys.length)) {
     errors.push(`Console status: HTTP ${statusResult.status || 'error'}${statusResult.text ? ` — ${statusResult.text}` : ''}`)
   }
   if (!usageResult.ok && savedKeys.length) {
@@ -659,12 +741,14 @@ async function buildSnapshot(ctx, config) {
         error: usageResult.ok ? null : (usageResult.error || null),
       },
       console: {
-        configured: Boolean(consoleLogin),
-        source: consoleLogin?.source || null,
+        configured: consoleEffective,
+        via: statusSource || null,
+        source: consoleLogin?.source || (statusSource === 'api-key' ? (`API key (${apiStatusResult?.candidate?.source || 'saved key'})`) : null),
         workspaceName: consoleLogin?.workspaceName || null,
       },
     },
     subscription,
+    billing,
     meters: meterList,
     allowance,
     currentModel,

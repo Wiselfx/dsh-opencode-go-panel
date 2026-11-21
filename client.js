@@ -14,13 +14,13 @@ window.__ModuleLoader__.load({
         panel: 'OpenCode Go',
         eyebrow: 'OpenCode Go',
         title: 'Subscription overview',
-        subtitle: 'Allowances, usage, and the published rates for each model.',
+        subtitle: 'Exact Console dollars via API key, windows, burn rates, and published per-M rates.',
         refresh: 'Refresh',
         refreshing: 'Refreshing…',
         openConsole: 'Open console',
         updated: 'Updated {time}',
         connectTitle: 'Connect your OpenCode Go key',
-        connectBody: 'This panel first looks for a saved OpenCode or Pi sign-in. If none is found, paste your OpenCode API key from the Console. It is stored in the Harness credential store, never in this page.',
+        connectBody: 'Paste an OpenCode API key (Console → Go → API keys, Usage:Read is enough). It is stored in the Harness credential store and used directly for exact Console dollars — no local sign-in needed.',
         connectPlaceholder: 'oc_…',
         connectAction: 'Save and connect',
         connecting: 'Connecting…',
@@ -120,7 +120,7 @@ window.__ModuleLoader__.load({
         reasoningTag: 'Reasoning',
         notesTitle: 'Notes and data sources',
         notesCalc: 'How these numbers are calculated',
-        note1: 'Subscription, renewal state, and exact dollar meters come from the OpenCode Console when a local OpenCode sign-in is available.',
+        note1: 'Subscription, renewal, and exact dollar meters come from the Console status API, via local sign-in (OAuth) or directly with your API key (Usage:Read).',
         note2: 'OpenCode reports dollars and percentages, not token counts. Token totals are observed from Harness session logs and the local OpenCode database, so usage from other machines or clients is not included.',
         note3: 'Your effective rate uses the plan price. The metered rate uses month-to-date Console spend. The list-value rate uses current model prices and your observed token mix.',
         note4: 'The 5-hour window is rolling. Weekly resets on Monday 00:00 UTC. Unused allowance does not roll over.',
@@ -241,7 +241,7 @@ window.__ModuleLoader__.load({
         reasoningTag: '推理',
         notesTitle: '说明与数据来源',
         notesCalc: '这些数字如何计算',
-        note1: '当本机存在 OpenCode 登录时，订阅、续费状态和精确美元计量来自 OpenCode 控制台。',
+        note1: '订阅、续费状态和精确美元计量来自控制台状态 API，可经本地登录 (OAuth) 或直接使用 API 密钥 (Usage:Read)。',
         note2: 'OpenCode 只提供美元和百分比，不提供 Token 数。Token 总量从 Harness 会话日志和本地 OpenCode 数据库观测，因此其他机器或客户端的用量不包含在内。',
         note3: '实际费率使用套餐价格。计量费率使用控制台本月支出。标价费率使用当前模型价格和你的 Token 结构。',
         note4: '5 小时窗口是滚动的。每周一 00:00 UTC 重置。未使用的配额不会结转。',
@@ -579,7 +579,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'ocgo-head-actions' },
           snapshot ? h('span', { className: 'ocgo-updated' }, `Updated ${fmtDateTime(snapshot.fetchedAt)}`) : null,
           snapshot?.auth?.key?.configured ? h(Pill, { tone: 'ok' }, h(Glyph, { name: 'key', size: 11 }), 'API key') : null,
-          snapshot?.auth?.console?.configured ? h(Pill, { tone: 'ok' }, h(Glyph, { name: 'check', size: 11 }), 'Console') : null,
+          snapshot?.auth?.console?.configured ? h(Pill, { tone: 'ok' }, h(Glyph, { name: 'check', size: 11 }), snapshot.auth.console.via === 'api-key' ? 'Console via key' : 'Console') : h(Pill, { tone: 'idle' }, 'Percentage only'),
           h('button', { className: 'ocgo-btn', type: 'button', onClick: () => onRefresh(), disabled: loading, title: 'Refresh data' },
             h(Glyph, { name: 'refresh', size: 13 }), loading ? 'Refreshing…' : 'Refresh'),
           h('a', { className: 'ocgo-btn ocgo-btn-ghost', href: 'https://opencode.ai/console/go', target: '_blank', rel: 'noreferrer' },
@@ -626,7 +626,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'ocgo-eyebrow' }, 'Connection'),
           h('h2', { className: 'ocgo-connect-title' }, 'Connect your OpenCode Go key'),
           h('p', { className: 'ocgo-connect-body' },
-            'This panel first looks for a saved OpenCode or Pi sign-in. If none is found, paste your OpenCode API key from the Console. It is stored in the Harness credential store, never in this page.'),
+            'Paste an OpenCode API key (Console → Go → API keys, Usage:Read is enough). It is stored in the Harness credential store and used directly for exact Console dollars — no local sign-in needed.'),
           h('form', { className: 'ocgo-form', onSubmit: submit },
             h('input', {
               className: 'ocgo-input',
@@ -659,22 +659,26 @@ window.__ModuleLoader__.load({
 
     function Hero({ snapshot }) {
       const subscription = snapshot.subscription
+      const billing = snapshot.billing
       const allowance = snapshot.allowance || {}
       const current = snapshot.currentModel
+      const monthly = (snapshot.meters || []).find((m) => m.key === 'monthly')
       const planValue = subscription ? subscription.plan : '—'
+      const via = subscription?.dataSource === 'api-key' ? 'via API key' : subscription?.dataSource === 'oauth' ? 'via sign-in' : subscription?.source === 'usage' ? 'estimated' : ''
       const planSub = subscription
-        ? `${fmtUsd(subscription.priceMonthly)} / month${subscription.workspaceName ? ` · ${subscription.workspaceName}` : ''}`
-        : 'Console details unavailable'
-      const statusTone = subscription?.cancelAtPeriodEnd ? 'warn' : subscription?.status === 'active' ? 'ok' : 'idle'
-      const statusText = subscription?.cancelAtPeriodEnd ? 'Cancelling' : subscription?.status === 'active' ? 'Active' : subscription?.status === 'limited' ? 'Limited' : '—'
-      const baseUsedValue = allowance.baseUsed != null && allowance.baseAllowance != null
-        ? `${fmtUsd(allowance.baseUsed)} / ${fmtUsd(allowance.baseAllowance)}`
-        : '—'
+        ? `${fmtUsd(subscription.priceMonthly)} / month ${via}${billing && billing.balance != null ? ` · bal ${fmtUsd(billing.balance)}` : ''}`
+        : 'Save an API key to load exact data'
+      const statusTone = subscription?.cancelAtPeriodEnd ? 'warn' : subscription?.status === 'active' ? 'ok' : subscription?.status === 'limited' ? 'error' : 'idle'
+      const statusText = subscription?.cancelAtPeriodEnd ? 'Cancelling' : subscription?.status === 'active' ? 'Active' : subscription?.status === 'limited' ? 'Limited' : (subscription?.status || '—')
+      const spendValue = monthly ? `${fmtUsd(monthly.used)} / ${fmtUsd(monthly.limit)}` : '—'
+      const spendSub = monthly ? `${fmtPct(monthly.percent)} of monthly window${monthly.remaining != null ? ` · ${fmtUsd(monthly.remaining)} left` : ''}` : '—'
+      const daysLeft = subscription?.accessEndsAt ? Math.max(0, Math.ceil((subscription.accessEndsAt - Date.now()) / 86400000)) : null
+      const remainSub = daysLeft != null ? `${daysLeft}d left in period` : (allowance.baseRemaining != null ? `${fmtUsd(allowance.baseRemaining)} base left` : '')
       const burnValue = allowance.currentModelUnlimited
         ? 'Free'
         : allowance.currentModelBurnMultiplier != null ? `${allowance.currentModelBurnMultiplier.toFixed(2)}×` : '—'
       const currentSub = current
-        ? `${current.name}${allowance.currentModelRemainingIfExclusive != null ? ` · ${fmtUsd(allowance.currentModelRemainingIfExclusive)} left if exclusive` : ''}`
+        ? `${current.name}${allowance.currentModelRemainingIfExclusive != null && !allowance.currentModelUnlimited ? ` · ${fmtUsd(allowance.currentModelRemainingIfExclusive)} if exclusive` : ''}`
         : 'No current model detected'
 
       return h('div', { className: 'ocgo-hero' },
@@ -685,19 +689,21 @@ window.__ModuleLoader__.load({
               ? h(Pill, { tone: 'warn' }, `Ends ${fmtDate(subscription.accessEndsAt)}`)
               : subscription.accessEndsAt
                 ? h(Pill, { tone: 'idle' }, `Renews ${fmtDate(subscription.accessEndsAt)}`)
-                : null) : null),
+                : null,
+            subscription.needsPaymentMethod ? h(Pill, { tone: 'error' }, 'Needs payment') : null,
+            subscription.useBalance === false ? h(Pill, { tone: 'idle' }, 'Extra off') : subscription.useBalance === true ? h(Pill, { tone: 'ok' }, 'Extra on') : null) : null),
         h(StatCard, {
-          label: 'Allowance used',
-          value: baseUsedValue,
-          sub: `base dollars · ${fmtPct(allowance.basePercent)} consumed`,
-        }, h(Progress, { percent: allowance.basePercent })),
+          label: 'Monthly spend (exact)',
+          value: spendValue,
+          sub: spendSub,
+        }, monthly ? h(Progress, { percent: monthly.percent }) : null),
         h(StatCard, {
           label: 'Remaining',
-          value: allowance.baseRemaining != null ? fmtUsd(allowance.baseRemaining) : '—',
-          sub: 'base dollars left',
-        }, current && !allowance.currentModelUnlimited
+          value: monthly?.remaining != null ? fmtUsd(monthly.remaining) : (allowance.baseRemaining != null ? fmtUsd(allowance.baseRemaining) : '—'),
+          sub: remainSub,
+        }, current && !allowance.currentModelUnlimited && allowance.currentModelRemainingIfExclusive != null
           ? h('div', { className: 'ocgo-stat-sub', style: { marginTop: 10 } },
-            `${fmtUsd(allowance.currentModelRemainingIfExclusive)} left if you stay on ${current.name}`)
+            `${fmtUsd(allowance.currentModelRemainingIfExclusive)} left on ${current.name}`)
           : null),
         h(StatCard, {
           label: 'Current model burn',
@@ -710,31 +716,24 @@ window.__ModuleLoader__.load({
     }
 
     function MeterCard({ meter, baseAllowance, now }) {
-      const startsAt = asNumber(meter.startsAt)
       const resetsAt = asNumber(meter.resetsAt)
-      const total = startsAt != null && resetsAt != null ? resetsAt - startsAt : null
-      const elapsed = total && total > 0 ? Math.max(0, Math.min(1, (now - startsAt) / total)) : null
-      const pace = elapsed != null && elapsed > 0.02 ? (meter.percent / 100) / elapsed : null
-      const paceTone = pace == null ? 'idle' : pace > 1.4 ? 'warn' : pace < 0.6 ? 'idle' : 'ok'
+      const pace = meter.pace
+      const paceTone = pace == null ? 'idle' : meter.rateLimited ? 'error' : pace > 1.4 ? 'warn' : pace < 0.6 ? 'idle' : 'ok'
       const resetIn = resetsAt != null ? resetsAt - now : null
-      const factor = meter.key === 'rolling' ? 0.2 : meter.key === 'weekly' ? 0.5 : 1
-      const baseLimit = baseAllowance != null ? baseAllowance * factor : meter.limit
-      const baseUsed = baseLimit != null ? (meter.percent / 100) * baseLimit : meter.used
-      const baseRemaining = baseLimit != null ? Math.max(0, baseLimit - baseUsed) : meter.remaining
       return h('div', { className: 'ocgo-card' },
         h('div', { className: 'ocgo-meter-head' },
           h('div', { className: 'ocgo-meter-label' }, meter.label),
-          meter.rateLimited ? h(Pill, { tone: 'error' }, 'Rate limited') : h(Pill, { tone: paceTone }, pace == null ? '—' : `${pace.toFixed(2)}× pace`)),
+          meter.rateLimited ? h(Pill, { tone: 'error' }, 'Rate limited') : h(Pill, { tone: paceTone }, pace == null ? '— pace' : `${pace.toFixed(2)}× pace`)),
         h('div', { className: 'ocgo-meter-value' },
           h('span', { className: 'ocgo-meter-percent' }, fmtPct(meter.percent)),
-          h('span', { className: 'ocgo-meter-of' }, baseLimit != null ? `of ${fmtUsd(baseLimit)} base cap` : 'of API pool')),
+          h('span', { className: 'ocgo-meter-of' }, meter.limit != null ? `of ${fmtUsd(meter.limit)}` : 'of API pool')),
         h(Progress, { percent: meter.percent }),
         h('div', { className: 'ocgo-meter-rows' },
-          h('span', null, `${fmtUsd(baseUsed)} base used`),
-          h('span', null, `${fmtUsd(baseRemaining)} base left`)),
+          h('span', null, `${fmtUsd(meter.used)} used of ${fmtUsd(meter.limit)}`),
+          h('span', null, `${fmtUsd(meter.remaining)} left · ${meter.status || 'ok'}`)),
         h('div', { className: 'ocgo-meter-foot' },
           h('span', null, resetIn == null ? '—' : resetIn <= 0 ? 'Resets now' : `Resets in ${fmtDuration(resetIn)}`),
-          h('span', { title: 'Percent of this API window; 1.00× pace would use the full window by reset.' }, `${Math.round(meter.percent)}% of window`)))
+          h('span', { title: '1.00× pace burns the window exactly by reset.' }, `${Math.round(meter.percent || 0)}% used`)))
     }
 
     function AllowanceSection({ snapshot }) {
@@ -824,55 +823,54 @@ window.__ModuleLoader__.load({
 
     function AccountSection({ snapshot }) {
       const subscription = snapshot.subscription
-      const meters = snapshot.meters || []
-      const byKey = Object.fromEntries(meters.map((meter) => [meter.key, meter]))
-      const monthly = byKey.monthly
-      const accessEnd = subscription?.accessEndsAt
-      const allowance = snapshot.allowance || {}
-      const current = snapshot.currentModel
-      const base = allowance.baseAllowance
-      const rows = [
-        ['5-hour base cap', base != null ? fmtUsd(base * 0.2) : '—'],
-        ['Weekly base cap', base != null ? fmtUsd(base * 0.5) : '—'],
-        ['Monthly base cap', base != null ? fmtUsd(base) : '—'],
-        ['Extra usage', subscription?.useBalance == null ? 'Unknown' : subscription.useBalance ? 'On' : 'Off'],
-      ]
-      const accountRows = subscription ? [
-        ['Plan', `${subscription.plan} · ${fmtUsd(subscription.priceMonthly)}/mo`],
-        ['Workspace', subscription.workspaceName || '—'],
-        ['Current model', current?.name || '—'],
-        ['Allowance used', `${fmtUsd(allowance.baseUsed)} base · ${fmtPct(allowance.basePercent)}`],
-        ['Current period', fmtRange(subscription.accessStartsAt, accessEnd)],
-        [subscription.cancelAtPeriodEnd ? 'Ends' : 'Renews', fmtDate(accessEnd)],
-        ['Status', subscription.cancelAtPeriodEnd ? 'Cancelling' : subscription.status === 'active' ? 'Active' : subscription.status || '—'],
+      const billing = snapshot.billing
+      if (!subscription) {
+        return h('section', { className: 'ocgo-section' },
+          h('div', { className: 'ocgo-section-head' },
+            h('div', null,
+              h('h2', { className: 'ocgo-section-title' }, 'Subscription & billing'),
+              h('p', { className: 'ocgo-section-sub' }, 'Save an API key for exact Console data'))),
+          h('div', { className: 'ocgo-card ocgo-empty' }, 'Console details are unavailable. Percentage usage and the model catalog still work.'))
+      }
+      const subRows = [
+        ['Plan', `${subscription.plan} · ${fmtUsd(subscription.priceMonthly)}/mo (${subscription.planId})`],
+        ['Source', subscription.dataSource === 'api-key' ? 'Console via API key (exact)' : subscription.dataSource === 'oauth' ? 'Console via sign-in (exact)' : `Console ${subscription.source}`],
+        ['Status', subscription.cancelAtPeriodEnd ? `Cancelling (ends ${fmtDate(subscription.accessEndsAt)})` : subscription.status],
+        ['Period', fmtRange(subscription.accessStartsAt, subscription.accessEndsAt)],
+        [subscription.cancelAtPeriodEnd ? 'Ends' : 'Renews', fmtDate(subscription.accessEndsAt)],
+        ['Cancel reason', subscription.renewalStopReason || '—'],
+        ['Resumability', subscription.resumability || '—'],
+        ['Next period paid', subscription.nextPeriodPaid == null ? '—' : subscription.nextPeriodPaid ? 'Yes' : 'No'],
+        ['Renewal pending', subscription.renewalPending == null ? '—' : subscription.renewalPending ? 'Yes' : 'No'],
+        ['Extra usage', subscription.useBalance == null ? 'Unknown' : subscription.useBalance ? 'On (bills balance)' : 'Off (stops at cap)'],
         ['Upgrade', subscription.upgrade?.amount != null ? `${fmtUsd(subscription.upgrade.amount)} ${subscription.upgrade.currency}` : '—'],
-      ] : [
-        ['Plan', '—'],
-        ['Workspace', '—'],
-        ['Current model', current?.name || '—'],
-        ['API meter', '—'],
-        ['Current period', '—'],
-        ['Renews', '—'],
-        ['Status', 'Console not linked'],
-        ['Upgrade', '—'],
+        ['Teams', subscription.teams ? `${fmtUsd(subscription.teams.amount)} ${subscription.teams.currency}${subscription.teams.memberCount ? ` · ${subscription.teams.memberCount} members` : ''}` : '—'],
+        ['Included value', subscription.monthlyLimit != null ? `${fmtUsd(subscription.monthlyLimit)} · ${subscription.includedValueMultiple != null ? subscription.includedValueMultiple.toFixed(1) : '—'}× plan` : '—'],
       ]
+      const billRows = billing ? [
+        ['Mode', billing.mode || '—'],
+        ['Balance', billing.balance != null ? fmtUsd(billing.balance) : '—'],
+        ['Available', billing.available != null ? fmtUsd(billing.available) : '—'],
+        ['Credit limit', billing.creditLimit != null ? fmtUsd(billing.creditLimit) : '—'],
+        ['Can purchase', billing.canPurchaseCredits == null ? '—' : billing.canPurchaseCredits ? 'Yes' : 'No'],
+        ['Auto-recharge', billing.canEnableAutoRecharge == null ? '—' : billing.canEnableAutoRecharge ? 'Yes' : 'No'],
+      ] : [['Billing', 'API key has no billing scope or lookup failed']]
       return h('section', { className: 'ocgo-section' },
         h('div', { className: 'ocgo-section-head' },
           h('div', null,
-            h('h2', { className: 'ocgo-section-title' }, 'Allowances and account'),
-            h('p', { className: 'ocgo-section-sub' }, subscription ? 'Your current Go plan and billing period' : 'Percentage usage is available; exact Console details are not'))),
+            h('h2', { className: 'ocgo-section-title' }, 'Subscription & billing'),
+            h('p', { className: 'ocgo-section-sub' }, `Exact Console data ${subscription.dataSource ? `· ${subscription.dataSource}` : ''}${billing ? ' · billing live' : ''}`))),
         h('div', { className: 'ocgo-account-grid' },
           h('div', { className: 'ocgo-card' },
-            h('div', { className: 'ocgo-stat-label' }, 'Allowance'),
-            rows.map(([label, value]) => h('div', { key: label, className: 'ocgo-kv' },
-              h('span', { className: 'ocgo-kv-key' }, label),
-              h('span', { className: 'ocgo-kv-val' }, value)))),
-          h('div', { className: 'ocgo-card' },
             h('div', { className: 'ocgo-stat-label' }, 'Subscription'),
-            accountRows.map(([label, value]) => h('div', { key: label, className: 'ocgo-kv' },
+            subRows.map(([label, value]) => h('div', { key: label, className: 'ocgo-kv' },
               h('span', { className: 'ocgo-kv-key' }, label),
-              h('span', { className: 'ocgo-kv-val' }, value))),
-            !subscription ? h('p', { className: 'ocgo-section-sub', style: { marginTop: 12 } }, 'Console details are unavailable. Percentage usage and the model catalog still work.') : null)))
+              h('span', { className: 'ocgo-kv-val' }, String(value))))),
+          h('div', { className: 'ocgo-card' },
+            h('div', { className: 'ocgo-stat-label' }, 'Billing'),
+            billRows.map(([label, value]) => h('div', { key: label, className: 'ocgo-kv' },
+              h('span', { className: 'ocgo-kv-key' }, label),
+              h('span', { className: 'ocgo-kv-val' }, String(value)))))))
     }
 
     function CatalogSection({ models }) {
@@ -942,12 +940,12 @@ window.__ModuleLoader__.load({
         h('details', { className: 'ocgo-notes' },
           h('summary', null, 'How these numbers are calculated'),
           h('ul', null,
-            h('li', null, 'Subscription state, renewal, and the five-hour, weekly, and monthly meters come from the OpenCode Console status API.'),
-            h('li', null, 'The model list, per-million rates, and current model come from OpenCode Go APIs and the Harness model selection.'),
-            h('li', null, 'OpenCode reports one normalized percentage for all models. The panel normalizes that to a base dollar allowance: the largest single-model cap is 100%. For Go that is the $100 DeepSeek V4.1 Flash cap.'),
-            h('li', null, 'A model with a smaller cap burns base faster: GLM-5.3-Flash at $60 is 1.67×, Kimi K3 at $15 is 6.67×. The API percentage is already the blended total, so mixed usage needs only the one base meter.'),
-            h('li', null, 'Per-model caps are OpenCode\'s published Go allowances; the status API does not expose the caps, only the normalized percentage. The panel does not estimate tokens from local logs.'),
-            h('li', null, 'The 5-hour window is rolling. Weekly resets on Monday 00:00 UTC. Unused allowance does not roll over.'))),
+            h('li', null, 'Console status: GET /console/api/go/status with Bearer API key (Usage:Read) or OAuth sign-in + x-org-id. Exact meters (limit/used microcents), product, renewal, cancel, useBalance, upgrade.'),
+            h('li', null, 'Billing: GET /console/api/billing/status with the same key. Balance, available, mode, purchase/auto-recharge flags.'),
+            h('li', null, 'Fallback: GET /zen/go/v1/usage gives percentage-only rolling/weekly/monthly when Console is unreachable.'),
+            h('li', null, 'Models: GET /zen/go/v1/models (authed) with public fallback. Per-M input/output/cache-read + context/max + tags.'),
+            h('li', null, 'Base allowance = largest single-model cap ($100 Go). Burn = base ÷ model cap. API % is already blended.'),
+            h('li', null, '5-hour window is rolling. Weekly resets Mon 00:00 UTC. Unused allowance does not roll over.'))),
         h('div', { className: 'ocgo-footer' }, 'OpenCode Go panel · data refreshed on demand'))
     }
 
@@ -977,15 +975,21 @@ window.__ModuleLoader__.load({
       const critical = []
       if (snapshot.subscription?.cancelAtPeriodEnd && snapshot.subscription.accessEndsAt) {
         critical.push(h(Banner, { key: 'cancel', tone: 'warn' },
-          `This plan is cancelled and access ends ${fmtDate(snapshot.subscription.accessEndsAt)}.`))
+          `This plan is cancelled and access ends ${fmtDate(snapshot.subscription.accessEndsAt)}${snapshot.subscription?.resumability ? ` (${snapshot.subscription.resumability})` : ''}.`))
+      }
+      if (snapshot.subscription?.needsPaymentMethod) {
+        critical.push(h(Banner, { key: 'pay', tone: 'error' },
+          'This subscription needs a payment method to resume. Add one in Console → Billing.'))
       }
       if (snapshot.subscription?.useBalance === false) {
         critical.push(h(Banner, { key: 'balance', tone: 'info' },
           'Extra usage is off: requests stop at the allowance instead of charging your balance.'))
       }
+      (snapshot.meters || []).filter((m) => m.rateLimited).forEach((m) =>
+        critical.push(h(Banner, { key: `rl-${m.key}`, tone: 'error' }, `${m.label} is rate-limited.`)))
       if (!snapshot.auth?.console?.configured) {
         critical.push(h(Banner, { key: 'console', tone: 'info' },
-          'Showing percentage usage. Sign in to OpenCode on this machine for exact Console billing data.'))
+          'Showing percentage estimates. Save an API key (Usage:Read) for exact Console dollars.'))
       }
       if (snapshot.auth?.key?.error && snapshot.connected) {
         critical.push(h(Banner, { key: 'keyerror', tone: 'warn' },
@@ -1008,7 +1012,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'ocgo-section-head' },
             h('div', null,
               h('h2', { className: 'ocgo-section-title' }, 'API usage windows'),
-              h('p', { className: 'ocgo-section-sub' }, 'Normalized dollar pool from OpenCode Go · reset countdowns and pace'))),
+              h('p', { className: 'ocgo-section-sub' }, 'Exact Console dollars when linked, else percentage estimates · reset countdowns and pace'))),
           h('div', { className: 'ocgo-hero' },
             (snapshot.meters || []).map((meter) => h(MeterCard, { key: meter.key, meter, baseAllowance: snapshot.allowance?.baseAllowance, now })))),
         h(AllowanceSection, { snapshot }),

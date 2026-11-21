@@ -52,9 +52,10 @@ The Host half resolves, in order:
 5. `~/.local/share/opencode/auth.json` (`opencode`).
 
 If no key is found, the panel shows a connect card and stores the pasted key in
-the Harness credential store. Exact Console billing data additionally uses a
-local OpenCode Console sign-in (`~/.local/share/opencode/opencode.db`); without
-it, the panel falls back to the percentage usage API.
+the Harness credential store. That key alone (Usage:Read) loads exact Console
+status (`/console/api/go/status`) + billing (`/console/api/billing/status`);
+a local OpenCode sign-in (`~/.local/share/opencode/opencode.db` OAuth) is
+used first when present, otherwise the panel falls back to the percentage usage API.
 
 ## Data limitations
 
