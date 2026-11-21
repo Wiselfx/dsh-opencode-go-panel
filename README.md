@@ -19,14 +19,24 @@ OpenCode Go APIs on the Host; the browser never receives the API key.
   output, and the peak-hour multiplier when one applies. A model's multiplier
   is evaluated against its UTC day/hour schedule, so the panel shows
   **Off-peak** when no peak pricing is active and **N× peak now** when it is.
+  The catalog also exposes each model's per-plan **monthly usage** value (Go,
+  Go Plus, Go Teams), compliance flags (zero data retention, training, limited
+  regions), capabilities (tools, reasoning efforts, structured output,
+  temperature/top-p/top-k), modalities, knowledge cutoff, release dates,
+  open-weights status, family, canonical id, and recommended API.
 - **Billing** from `GET /console/api/billing/status`: balance, available
-  credit, mode, and auto-recharge/purchase flags.
+  credit, billing mode and type, auto-recharge/purchase flags, plus the count
+  of entries returned by the invoices endpoint.
 - **Usage history** from OpenCode's official workspace usage APIs: requests,
   input/output/cache tokens, and OpenCode's exact usage amount, grouped by
-  model, with **Today**, **This month**, **Last 6 months**, and **All time**
-  ranges. Today and This month use the daily CSV export
-  (`/console/api/v2/usage/export?range=90d`); six-month and all-time totals use
-  the Console summary and per-model endpoints. Daily totals may lag.
+  model, with **Today**, **Last 7 days**, **Last 30 days**, **This month**,
+  **Last 6 months**, and **All time** ranges. Ranges up to one month use the
+  daily CSV export (`/console/api/v2/usage/export?range=90d`) and include a
+  daily token bar series; six-month and all-time totals use the Console summary
+  and per-model endpoints. Derived figures include token shares, cache hit
+  rate, average tokens and usage per request, effective usage per 1M tokens,
+  free-model token share, and each model's share of tokens and amount. Daily
+  totals may lag.
 
 The model table is a plain catalog of base prices, not a per-model quota. The
 separate Usage section reports the workspace's per-model tokens and usage
@@ -77,6 +87,10 @@ OpenCode.
   the Console's aggregate endpoints, so they have totals and per-model rows but
   no daily breakdown. Request logs retain only 30 days and are not used for the
   report.
+- Monthly usage values are the catalog's per-plan figures; they are unitless and
+  are not labeled as dollars or treated as per-model dollar caps.
+- The invoices endpoint currently returns an empty list for this account; the
+  panel shows its count when present.
 - The exported CSV contains per-user fields; the Host aggregates them and never
   sends user names, ids, or raw rows to the browser. The reported amount is
   OpenCode's official usage value for those requests; Go usage counts against

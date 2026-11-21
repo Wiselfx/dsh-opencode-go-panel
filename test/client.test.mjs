@@ -125,58 +125,17 @@ function renderToString(node) {
   return ''
 }
 
-function setup() {
-  const client = loadClient()
-  const dictionaries = []
-  const registrations = []
-  const ctx = {
-    effect(fn) {
-      return fn()
-    },
-    locale: {
-      register(ns, dicts) {
-        dictionaries.push({ ns, dicts })
-        return () => {}
-      },
-      bind(ns) {
-        const en = dictionaries.find((entry) => entry.ns === ns)?.dicts.en
-        return (key, params) => {
-          const template = en?.[key] ?? key
-          if (!params) return template
-          return template.replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match))
-        }
-      },
-    },
-    slots: {
-      inject(_owner, callback) {
-        callback()
-      },
-      register(options, component) {
-        registrations.push({ options, component })
-        return () => {}
-      },
-    },
-  }
-  client.apply(ctx)
-  const en = dictionaries[0].dicts.en
-  return {
-    registrations,
-    t: (key, params) => {
-      const template = en[key] ?? key
-      if (!params) return template
-      return template.replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match))
-    },
-  }
-}
-
 const USAGE_REPORT = {
   ok: true,
   range: 'month',
   generatedAt: Date.now(),
   from: '2026-11-01',
   to: '2026-11-21',
-  apiLimitDays: 90,
   coverage: { from: '2026-11-20', to: '2026-11-21', days: 2 },
+  byDay: [
+    { day: '2026-11-20', requests: 2, tokens: 600, costUsd: 0.5 },
+    { day: '2026-11-21', requests: 15, tokens: 7600, costUsd: 3.5 },
+  ],
   totals: {
     requests: 17,
     inputTokens: 1600,
@@ -209,6 +168,7 @@ const SNAPSHOT = {
   subscription: {
     source: 'console',
     plan: 'Go',
+    planId: 'go',
     priceMonthly: 10,
     status: 'active',
     cancelAtPeriodEnd: true,
@@ -224,6 +184,8 @@ const SNAPSHOT = {
   },
   billing: {
     mode: 'pay-as-you-go',
+    billingMode: 'prepaid',
+    invoiceCount: 0,
     balance: 0,
     available: 0,
     creditLimit: null,
@@ -245,13 +207,34 @@ const SNAPSHOT = {
     free: false,
     peakFactor: 2,
     peakActive: false,
+    monthlyUsage: { go: 100, 'go-plus': 200, 'go-teams': 105 },
+    training: false,
+    zdr: true,
+    limitedRegions: false,
+    featured: true,
+    tools: true,
+    reasoning: true,
+    reasoningEfforts: ['low', 'high', 'max'],
+    structuredOutput: true,
+    temperature: true,
+    topP: true,
+    topK: true,
+    inputModalities: ['text', 'image/png'],
+    outputModalities: ['text'],
+    knowledge: '2025-05',
+    releaseDate: '2026-10-17',
+    lastUpdated: '2026-10-17',
+    openWeights: true,
+    family: 'deepseek-flash',
+    canonicalId: 'deepseek/deepseek-v4.1-flash-1017',
+    recommendedApi: 'chat-completions',
   }],
   warnings: [{ code: 'models-public' }],
   errors: [],
 }
 
 test('the connected view renders plan, windows, models, account, and key copy', () => {
-  const client = loadClient([SNAPSHOT, false, null, Date.now(), 0, 0, 'month', USAGE_REPORT, false, null, 0])
+  const client = loadClient([SNAPSHOT, false, null, Date.now(), 0, 0, 'month', USAGE_REPORT, false, null, 0, '', 'deepseek-v4.1-flash'])
   const registrations = []
   let t = (key) => key
   const ctx = {
@@ -291,12 +274,26 @@ test('the connected view renders plan, windows, models, account, and key copy', 
     'workspace model list could not be read',
     'Usage history',
     'Today',
+    'Last 7 days',
+    'Last 30 days',
     'This month',
     'Last 6 months',
     'All time',
     'Usage amount',
     '$4.00',
     '8.2K',
+    'Cache hit rate',
+    'Tokens / request',
+    'Usage / 1M tokens',
+    'Free model tokens',
+    'Daily tokens',
+    'Monthly usage',
+    'Hide',
+    'Zero data retention',
+    'Knowledge cutoff',
+    '2025-05',
+    'Billing mode',
+    'Invoices',
   ]
   for (const expected of expectedCopy) {
     assert.ok(html.includes(expected), `expected rendered copy: ${expected}`)

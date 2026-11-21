@@ -113,8 +113,29 @@ const MODELS = {
     {
       id: 'deepseek-v4.1-flash',
       name: 'DeepSeek V4.1 Flash 1017',
-      modalities: { input: ['text', 'image/png'] },
-      capabilities: { reasoning: { supported: true } },
+      modalities: { input: ['text', 'image/png'], output: ['text'] },
+      capabilities: {
+        tools: { supported: true },
+        reasoning: { supported: true, effort: ['low', 'high', 'max'] },
+        structured_output: true,
+        temperature: true,
+        top_p: true,
+        top_k: true,
+      },
+      go: {
+        monthly_usage: { go: 100, 'go-plus': 200, 'go-teams': 105 },
+        training: false,
+        zdr: true,
+        limited_regions: false,
+        featured: true,
+      },
+      knowledge: '2025-05',
+      release_date: '2026-10-17',
+      last_updated: '2026-10-17',
+      open_weights: true,
+      family: 'deepseek-flash',
+      canonical_id: 'deepseek/deepseek-v4.1-flash-1017',
+      recommended_api: 'chat-completions',
       limit: { context: 1000000, output: 384000 },
       cost: {
         text: { input: { price: 0.15, cache: { read: 0.003 } }, output: { price: 0.6 } },
@@ -201,6 +222,7 @@ function mockApi(t, {
     if (url.endsWith('/console/api/billing/status')) {
       return status === 200 ? json(BILLING) : json({ error: 'billing unavailable' }, status)
     }
+    if (url.endsWith('/console/api/billing/invoices')) return json([])
     if (url.endsWith('/zen/go/v1/usage')) {
       return usage === 200 ? json(USAGE) : json({ error: 'usage unavailable' }, usage)
     }
@@ -241,6 +263,7 @@ test('Console status builds exact meters and the current model from the real dat
   assert.equal(snapshot.auth.console.configured, true)
   assert.equal(snapshot.subscription.source, 'console')
   assert.equal(snapshot.subscription.plan, 'Go')
+  assert.equal(snapshot.subscription.planId, 'go')
   assert.equal(snapshot.subscription.priceMonthly, 10)
   assert.equal(snapshot.subscription.status, 'cancelling')
   assert.equal(snapshot.subscription.cancelAtPeriodEnd, true)
@@ -264,8 +287,31 @@ test('Console status builds exact meters and the current model from the real dat
   assert.equal(deepseek.peakActive, false, 'Saturday is outside the weekday peak schedule')
   assert.equal(deepseek.context, 1000000)
   assert.equal(deepseek.maxTokens, 384000)
+  assert.deepEqual(deepseek.monthlyUsage, { go: 100, 'go-plus': 200, 'go-teams': 105 })
+  assert.equal(deepseek.training, false)
+  assert.equal(deepseek.zdr, true)
+  assert.equal(deepseek.limitedRegions, false)
+  assert.equal(deepseek.featured, true)
+  assert.equal(deepseek.tools, true)
+  assert.equal(deepseek.reasoning, true)
+  assert.deepEqual(deepseek.reasoningEfforts, ['low', 'high', 'max'])
+  assert.equal(deepseek.structuredOutput, true)
+  assert.equal(deepseek.temperature, true)
+  assert.equal(deepseek.topP, true)
+  assert.equal(deepseek.topK, true)
+  assert.deepEqual(deepseek.inputModalities, ['text', 'image/png'])
+  assert.deepEqual(deepseek.outputModalities, ['text'])
+  assert.equal(deepseek.knowledge, '2025-05')
+  assert.equal(deepseek.releaseDate, '2026-10-17')
+  assert.equal(deepseek.lastUpdated, '2026-10-17')
+  assert.equal(deepseek.openWeights, true)
+  assert.equal(deepseek.family, 'deepseek-flash')
+  assert.equal(deepseek.canonicalId, 'deepseek/deepseek-v4.1-flash-1017')
+  assert.equal(deepseek.recommendedApi, 'chat-completions')
 
   assert.equal(snapshot.billing.mode, 'pay-as-you-go')
+  assert.equal(snapshot.billing.billingMode, 'prepaid')
+  assert.equal(snapshot.billing.invoiceCount, 0)
   assert.equal(snapshot.billing.balance, 0)
   assert.equal(snapshot.billing.canEnableAutoRecharge, true)
   assert.deepEqual(snapshot.errors, [])
@@ -470,6 +516,13 @@ test('official usage export aggregates tokens and amount by model and range', as
     costUsd: 4,
   })
   assert.deepEqual(month.coverage, { from: '2026-11-20', to: '2026-11-21', days: 2 })
+  assert.equal(month.byDay.length, 21)
+  assert.equal(month.byDay[0].day, '2026-11-01')
+  assert.equal(month.byDay[20].day, '2026-11-21')
+  assert.deepEqual(
+    month.byDay.find((day) => day.day === '2026-11-21'),
+    { day: '2026-11-21', requests: 15, tokens: 7600, costUsd: 3.5 },
+  )
   assert.deepEqual(month.byModel.map((row) => [row.model, row.requests, row.tokens, row.costUsd]), [
     ['deepseek-v4.1-flash', 12, 6700, 3],
     ['glm-5.3', 5, 1500, 1],
@@ -488,6 +541,17 @@ test('official usage export aggregates tokens and amount by model and range', as
     costUsd: 3.5,
   })
   assert.deepEqual(today.coverage, { from: '2026-11-21', to: '2026-11-21', days: 1 })
+  assert.equal(today.byDay.length, 1)
+
+  const seven = await provider.getUsage('7d')
+  assert.equal(seven.from, '2026-11-15')
+  assert.equal(seven.byDay.length, 7)
+  assert.equal(seven.totals.requests, 17)
+
+  const thirty = await provider.getUsage('30d')
+  assert.equal(thirty.from, '2026-10-23')
+  assert.equal(thirty.byDay.length, 30)
+  assert.equal(thirty.totals.requests, 17)
 })
 
 test('six-month and all-time ranges use the aggregate endpoints', async (t) => {
@@ -499,6 +563,7 @@ test('six-month and all-time ranges use the aggregate endpoints', async (t) => {
   assert.equal(six.range, '6m')
   assert.equal(six.coverage, null)
   assert.equal(six.from, null)
+  assert.equal(six.byDay, null)
   assert.deepEqual(six.totals, {
     requests: 17,
     inputTokens: 1600,

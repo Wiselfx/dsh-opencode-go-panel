@@ -12,14 +12,14 @@
 const DEFAULT_API_ORIGIN = 'https://opencode.ai'
 /** The panel's own credential record: `<package>/<id>` in the Harness record space. */
 const CREDENTIAL_RECORD = 'dsh-opencode-go-panel/api-key'
-const USER_AGENT = 'dsh-opencode-go-panel/1.5.0'
+const USER_AGENT = 'dsh-opencode-go-panel/1.6.0'
 const MICROCENTS_PER_USD = 100_000_000
 const DAY = 86_400_000
 const HOUR = 3_600_000
 const MIN_REFRESH_SECONDS = 60
 const USAGE_CACHE_MS = 60_000
 const USAGE_MAX_BYTES = 16 * 1024 * 1024
-const USAGE_RANGES = new Set(['today', 'month', '6m', 'all'])
+const USAGE_RANGES = new Set(['today', '7d', '30d', 'month', '6m', 'all'])
 const USAGE_COLUMNS = [
   'day', 'provider', 'model', 'requests', 'input_tokens', 'output_tokens',
   'cache_read_tokens', 'cache_write_5m_tokens', 'cache_write_1h_tokens', 'cost_micro_cents',
@@ -142,6 +142,18 @@ async function readBilling(config, key) {
     return { ok: false, status: result.status, reason: reasonForStatus(result.status), detail: remoteDetail(result) }
   } catch (error) {
     return { ok: false, status: 0, reason: 'network', detail: errorMessage(error) }
+  }
+}
+
+async function readInvoices(config, key) {
+  try {
+    const result = await fetchJson(`${config.apiOrigin}/console/api/billing/invoices`, authorization(key))
+    if (!result.ok) return null
+    if (Array.isArray(result.body)) return result.body
+    if (Array.isArray(result.body?.data)) return result.body.data
+    return null
+  } catch {
+    return null
   }
 }
 
@@ -342,6 +354,10 @@ function peakState(multipliers, at) {
   return { peakFactor: scheduled, peakActive: active !== null }
 }
 
+function stringList(value) {
+  return Array.isArray(value) ? value.map((entry) => String(entry)).filter(Boolean) : []
+}
+
 function normalizeModels(raw, at = new Date()) {
   return raw.map((model) => {
     const text = model?.cost?.text || {}
@@ -351,6 +367,12 @@ function normalizeModels(raw, at = new Date()) {
       cacheRead: numberOrNull(text.input?.cache?.read) ?? 0,
     }
     const peak = peakState(model?.cost?.multipliers, at)
+    const go = model?.go && typeof model.go === 'object' ? model.go : {}
+    const monthly = go.monthly_usage && typeof go.monthly_usage === 'object' ? go.monthly_usage : null
+    const capabilities = model?.capabilities && typeof model.capabilities === 'object'
+      ? model.capabilities : {}
+    const modalities = model?.modalities && typeof model.modalities === 'object'
+      ? model.modalities : {}
     return {
       id: String(model?.id || ''),
       name: typeof model?.name === 'string' && model.name ? model.name : String(model?.id || ''),
@@ -360,6 +382,31 @@ function normalizeModels(raw, at = new Date()) {
       free: rates.input === 0 && rates.output === 0,
       peakFactor: peak.peakFactor,
       peakActive: peak.peakActive,
+      monthlyUsage: monthly ? {
+        go: numberOrNull(monthly.go),
+        'go-plus': numberOrNull(monthly['go-plus']),
+        'go-teams': numberOrNull(monthly['go-teams']),
+      } : null,
+      training: go.training === true,
+      zdr: go.zdr === true,
+      limitedRegions: go.limited_regions === true,
+      featured: go.featured === true,
+      tools: capabilities.tools?.supported === true,
+      reasoning: capabilities.reasoning?.supported === true,
+      reasoningEfforts: stringList(capabilities.reasoning?.effort),
+      structuredOutput: capabilities.structured_output === true,
+      temperature: capabilities.temperature === true,
+      topP: capabilities.top_p === true,
+      topK: capabilities.top_k === true,
+      inputModalities: stringList(modalities.input),
+      outputModalities: stringList(modalities.output),
+      knowledge: typeof model?.knowledge === 'string' ? model.knowledge : null,
+      releaseDate: typeof model?.release_date === 'string' ? model.release_date : null,
+      lastUpdated: typeof model?.last_updated === 'string' ? model.last_updated : null,
+      openWeights: model?.open_weights === true,
+      family: typeof model?.family === 'string' ? model.family : null,
+      canonicalId: typeof model?.canonical_id === 'string' ? model.canonical_id : null,
+      recommendedApi: typeof model?.recommended_api === 'string' ? model.recommended_api : null,
     }
   }).filter((model) => model.id)
 }
@@ -369,6 +416,7 @@ function subscriptionFromStatus(statusDto, plan) {
   return {
     source: 'console',
     plan: plan.name,
+    planId: plan.id,
     priceMonthly: plan.priceMonthly,
     currency: String(statusDto.renewalCurrency || 'usd').toUpperCase(),
     status: statusDto.cancelAtPeriodEnd ? 'cancelling' : 'active',
@@ -397,6 +445,7 @@ function subscriptionFromUsage(usageDto, plan) {
   return {
     source: 'usage',
     plan: plan.name,
+    planId: plan.id,
     priceMonthly: plan.priceMonthly,
     currency: 'USD',
     status: 'active',
@@ -413,16 +462,17 @@ function subscriptionFromUsage(usageDto, plan) {
   }
 }
 
-function billingFrom(dto) {
+function billingFrom(dto, invoices) {
   if (!dto) return null
-  const mode = dto.mode || dto.billingMode
   return {
-    mode: typeof mode === 'string' ? mode : null,
+    mode: typeof dto.mode === 'string' ? dto.mode : null,
+    billingMode: typeof dto.billingMode === 'string' ? dto.billingMode : null,
     balance: usdFromMicroCents(dto.balanceMicroCents),
     available: usdFromMicroCents(dto.availableMicroCents),
     creditLimit: usdFromMicroCents(dto.creditLimitMicroCents),
     canPurchaseCredits: typeof dto.canPurchaseCredits === 'boolean' ? dto.canPurchaseCredits : null,
     canEnableAutoRecharge: typeof dto.canEnableAutoRecharge === 'boolean' ? dto.canEnableAutoRecharge : null,
+    invoiceCount: Array.isArray(invoices) ? invoices.length : null,
   }
 }
 
@@ -686,6 +736,7 @@ function buildAggregateReport(range, totals, models, now = Date.now()) {
     to: null,
     coverage: null,
     totals,
+    byDay: null,
     byModel: [...models].sort((left, right) => right.costUsd - left.costUsd
       || left.model.localeCompare(right.model)),
   }
@@ -721,11 +772,21 @@ function buildUsageReport(rows, range, now = Date.now()) {
   const today = utcDay(now)
   const from = range === 'today'
     ? today
-    : range === 'month' ? `${today.slice(0, 8)}01` : utcDay(now - 89 * DAY)
+    : range === '7d' ? utcDay(now - 6 * DAY)
+      : range === '30d' ? utcDay(now - 29 * DAY)
+        : range === 'month' ? `${today.slice(0, 8)}01`
+          : today
   const selected = rows.filter((row) => row.day >= from && row.day <= today)
   const totals = emptyUsageTotals()
   const byModel = new Map()
+  const byDay = new Map()
   const days = new Set()
+  const startMs = Date.parse(`${from}T00:00:00.000Z`)
+  const endMs = Date.parse(`${today}T00:00:00.000Z`)
+  for (let time = startMs; time <= endMs; time += DAY) {
+    const day = utcDay(time)
+    byDay.set(day, { day, requests: 0, tokens: 0, costUsd: 0 })
+  }
   let firstDay = null
   let lastDay = null
   for (const row of selected) {
@@ -733,6 +794,12 @@ function buildUsageReport(rows, range, now = Date.now()) {
     days.add(row.day)
     firstDay = firstDay === null || row.day < firstDay ? row.day : firstDay
     lastDay = lastDay === null || row.day > lastDay ? row.day : lastDay
+    const bucket = byDay.get(row.day)
+    if (bucket) {
+      bucket.requests += row.requests
+      bucket.tokens += row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheWriteTokens
+      bucket.costUsd += row.costMicroCents / MICROCENTS_PER_USD
+    }
     const id = JSON.stringify([row.provider, row.model])
     let model = byModel.get(id)
     if (!model) {
@@ -749,6 +816,7 @@ function buildUsageReport(rows, range, now = Date.now()) {
     to: today,
     coverage: { from: firstDay, to: lastDay, days: days.size },
     totals,
+    byDay: [...byDay.values()],
     byModel: [...byModel.values()]
       .map(finishUsageTotals)
       .sort((left, right) => right.costUsd - left.costUsd
@@ -761,9 +829,10 @@ async function buildSnapshot(ctx, config) {
   if (!stored.key) return emptySnapshot(config)
   const key = stored.key
 
-  const [consoleResult, billingResult, usageResult, publicModels, workspaceModels] = await Promise.all([
+  const [consoleResult, billingResult, invoicesResult, usageResult, publicModels, workspaceModels] = await Promise.all([
     readConsoleStatus(config, key),
     readBilling(config, key),
+    readInvoices(config, key),
     readUsage(config, key),
     readModels(config, null),
     readModels(config, key),
@@ -779,7 +848,7 @@ async function buildSnapshot(ctx, config) {
   const subscription = statusDto
     ? subscriptionFromStatus(statusDto, plan)
     : (usageResult.ok ? subscriptionFromUsage(usageResult.body, plan) : null)
-  const billing = billingFrom(billingResult.ok ? billingResult.body : null)
+  const billing = billingFrom(billingResult.ok ? billingResult.body : null, invoicesResult)
 
   // Prefer the authenticated catalog: it lists the models this workspace can actually use.
   const catalog = workspaceModels.data.length
@@ -898,8 +967,8 @@ export function createProvider(ctx, rawConfig = {}) {
 
   /**
    * Official workspace usage history.
-   * Today and This month come from the 90-day daily CSV; six months and all
-   * time come from the Console's aggregate summary and per-model endpoints.
+   * Today, 7 days, 30 days, and This month come from the 90-day daily CSV;
+   * six months and all time come from the Console's aggregate endpoints.
    */
   async function getUsage(range = 'month', force = false) {
     const selected = typeof range === 'string' ? range : 'month'

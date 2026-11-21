@@ -86,6 +86,8 @@ window.__ModuleLoader__.load({
         usageSub: 'Official workspace usage; may include other clients · UTC',
         usageRange: 'Usage range',
         rangeToday: 'Today',
+        range7d: 'Last 7 days',
+        range30d: 'Last 30 days',
         rangeMonth: 'This month',
         range6m: 'Last 6 months',
         rangeAll: 'All time',
@@ -100,8 +102,22 @@ window.__ModuleLoader__.load({
         usageCache: 'Cache',
         usageTotal: 'Total',
         usageCoverage: '{from} – {to} · {days} days',
+        usageTokenShare: 'Tokens %',
+        usageValueShare: 'Amount %',
+        usagePartValue: '{value} ({percent})',
+        usageCacheHit: 'Cache hit rate',
+        usageAvgTokens: 'Tokens / request',
+        usageAvgCost: 'Usage / request',
+        usageCostPerM: 'Usage / 1M tokens',
+        usageFreeShare: 'Free model tokens',
+        usageCacheHitHint: 'Cache-read tokens ÷ (input + cache-read tokens).',
+        usageAvgTokensHint: 'Total tokens ÷ requests.',
+        usageAvgCostHint: 'Official usage amount ÷ requests.',
+        usageCostPerMHint: 'Official usage amount ÷ total tokens × 1,000,000.',
+        usageFreeShareHint: 'Share of tokens served by models with zero usage amount.',
+        usageDailyChart: 'Daily tokens',
         usageNoData: 'No usage was recorded for this range.',
-        usageLimitNote: 'Daily totals may lag. Today and This month use the official daily export; six-month and all-time totals use OpenCode’s aggregate endpoint.',
+        usageLimitNote: 'Daily totals may lag. Today through This month use the official daily export; six-month and all-time totals use OpenCode’s aggregate endpoint.',
         usageValueNote: 'Usage amount is OpenCode’s official value for these requests; Go usage counts against the subscription allowance, not an extra charge.',
         models: 'Models',
         modelColumn: 'Model',
@@ -119,7 +135,36 @@ window.__ModuleLoader__.load({
         offPeak: 'Off-peak',
         noModels: 'OpenCode returned no models.',
         noModelsMatch: 'No model matches that search.',
-        modelsNote: 'Rates are base prices from the OpenCode model catalog; an active peak multiplier applies on top. OpenCode reports one blended allowance, not per-model spend or token totals.',
+        modelsNote: 'Rates are base prices from the OpenCode model catalog; an active peak multiplier applies on top. Monthly usage is the catalog’s per-plan value, not a dollar cap. OpenCode reports one blended allowance, not per-model token quotas.',
+        monthlyUsage: 'Monthly usage',
+        monthlyUsageTiers: 'Go {go} · Plus {plus} · Teams {teams}',
+        showDetails: 'Details',
+        hideDetails: 'Hide',
+        capabilities: 'Capabilities',
+        tools: 'Tools',
+        reasoning: 'Reasoning',
+        reasoningEfforts: 'Reasoning efforts',
+        structuredOutput: 'Structured output',
+        temperature: 'Temperature',
+        topP: 'Top-p',
+        topK: 'Top-k',
+        modalities: 'Modalities',
+        knowledgeCutoff: 'Knowledge cutoff',
+        releaseDate: 'Release date',
+        lastUpdated: 'Last updated',
+        openWeights: 'Open weights',
+        family: 'Family',
+        canonicalId: 'Canonical id',
+        recommendedApi: 'Recommended API',
+        zdr: 'Zero data retention',
+        trainingData: 'Training may use data',
+        limitedRegions: 'Limited regions',
+        featured: 'Featured',
+        modalityText: 'Text',
+        modalityImage: 'Image',
+        modalityAudio: 'Audio',
+        modalityVideo: 'Video',
+        modalityOther: 'Other',
         account: 'Account',
         accountSub: 'Subscription details and billing.',
         subscription: 'Subscription details',
@@ -136,7 +181,9 @@ window.__ModuleLoader__.load({
         balance: 'Balance',
         available: 'Available',
         creditLimit: 'Credit limit',
-        billingMode: 'Mode',
+        billingModeLabel: 'Billing mode',
+        billingType: 'Billing type',
+        invoices: 'Invoices',
         autoRecharge: 'Auto-recharge',
         canPurchase: 'Can purchase credits',
         billingUnavailable: 'Billing data is unavailable for this key.',
@@ -241,6 +288,8 @@ window.__ModuleLoader__.load({
         usageSub: '工作区官方用量，可能包含其他客户端 · UTC',
         usageRange: '用量范围',
         rangeToday: '今天',
+        range7d: '最近 7 天',
+        range30d: '最近 30 天',
         rangeMonth: '本月',
         range6m: '最近 6 个月',
         rangeAll: '全部时间',
@@ -255,8 +304,22 @@ window.__ModuleLoader__.load({
         usageCache: '缓存',
         usageTotal: '总计',
         usageCoverage: '{from} – {to} · {days} 天',
+        usageTokenShare: 'Token 占比',
+        usageValueShare: '金额占比',
+        usagePartValue: '{value}（{percent}）',
+        usageCacheHit: '缓存命中率',
+        usageAvgTokens: '每请求 Token',
+        usageAvgCost: '每请求用量',
+        usageCostPerM: '每百万 Token 用量',
+        usageFreeShare: '免费模型 Token 占比',
+        usageCacheHitHint: '缓存读取 Token ÷（输入 + 缓存读取 Token）。',
+        usageAvgTokensHint: '总 Token ÷ 请求数。',
+        usageAvgCostHint: '官方用量金额 ÷ 请求数。',
+        usageCostPerMHint: '官方用量金额 ÷ 总 Token × 1,000,000。',
+        usageFreeShareHint: '用量金额为零的模型所占 Token 比例。',
+        usageDailyChart: '每日 Token',
         usageNoData: '该范围内没有用量记录。',
-        usageLimitNote: '每日汇总可能有延迟。今天和本月使用官方每日导出；六个月和全部时间使用 OpenCode 的汇总接口。',
+        usageLimitNote: '每日汇总可能有延迟。今天至本月使用官方每日导出；六个月和全部时间使用 OpenCode 的汇总接口。',
         usageValueNote: '用量金额是 OpenCode 对这些请求的官方价值；Go 用量计入订阅配额，不是额外收费。',
         models: '模型',
         modelColumn: '模型',
@@ -274,7 +337,36 @@ window.__ModuleLoader__.load({
         offPeak: '非高峰',
         noModels: 'OpenCode 未返回模型。',
         noModelsMatch: '没有匹配该搜索的模型。',
-        modelsNote: '表中为 OpenCode 模型目录的基础价格；高峰倍率生效时会在此基础上叠加。OpenCode 只提供一个混合配额，不提供按模型支出或 Token 总量。',
+        modelsNote: '表中为 OpenCode 模型目录的基础价格；高峰倍率生效时会在此基础上叠加。每月用量是目录中按套餐给出的值，不是美元上限。OpenCode 只提供一个混合配额，不按模型划分 Token 配额。',
+        monthlyUsage: '每月用量',
+        monthlyUsageTiers: 'Go {go} · Plus {plus} · Teams {teams}',
+        showDetails: '详情',
+        hideDetails: '收起',
+        capabilities: '能力',
+        tools: '工具',
+        reasoning: '推理',
+        reasoningEfforts: '推理强度',
+        structuredOutput: '结构化输出',
+        temperature: '温度',
+        topP: 'Top-p',
+        topK: 'Top-k',
+        modalities: '模态',
+        knowledgeCutoff: '知识截止',
+        releaseDate: '发布日期',
+        lastUpdated: '最后更新',
+        openWeights: '开放权重',
+        family: '系列',
+        canonicalId: '规范 ID',
+        recommendedApi: '推荐 API',
+        zdr: '零数据保留',
+        trainingData: '数据可能用于训练',
+        limitedRegions: '地区受限',
+        featured: '推荐',
+        modalityText: '文本',
+        modalityImage: '图像',
+        modalityAudio: '音频',
+        modalityVideo: '视频',
+        modalityOther: '其他',
         account: '账户',
         accountSub: '订阅详情与账单。',
         subscription: '订阅详情',
@@ -291,7 +383,9 @@ window.__ModuleLoader__.load({
         balance: '余额',
         available: '可用',
         creditLimit: '信用额度',
-        billingMode: '模式',
+        billingModeLabel: '计费模式',
+        billingType: '计费类型',
+        invoices: '发票',
         autoRecharge: '自动充值',
         canPurchase: '可购买额度',
         billingUnavailable: '该密钥没有账单数据。',
@@ -553,6 +647,55 @@ window.__ModuleLoader__.load({
     .ocgo-usage-part { display: inline-flex; align-items: baseline; gap: 6px; }
     .ocgo-usage-part-value { color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
     .ocgo-usage-coverage { margin: 12px 0 0; font-size: 11.5px; line-height: 17px; color: var(--dsw-alias-label-caption); }
+    .ocgo-link-button {
+      padding: 0; border: 0; background: transparent;
+      color: var(--dsw-alias-brand-primary); font: inherit; font-size: 11.5px;
+      line-height: 16px; cursor: pointer; text-decoration: none;
+    }
+    .ocgo-link-button:focus-visible {
+      outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+      outline-offset: 1px;
+    }
+    @media (hover: hover) {
+      .ocgo-link-button:hover { text-decoration: underline; }
+    }
+    .ocgo-usage-derived {
+      display: grid; gap: 12px; margin-top: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+    }
+    .ocgo-usage-derived-item { min-width: 0; }
+    .ocgo-usage-derived-value {
+      margin-top: 3px; font-size: 14px; line-height: 20px; font-weight: 550;
+      font-variant-numeric: tabular-nums;
+    }
+    .ocgo-usage-chart { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--dsw-alias-border-l1); }
+    .ocgo-usage-chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .ocgo-usage-chart-range { font-size: 11.5px; line-height: 17px; color: var(--dsw-alias-label-caption); }
+    .ocgo-usage-chart-bars { display: flex; align-items: flex-end; gap: 2px; height: 56px; margin-top: 8px; }
+    .ocgo-usage-bar { display: flex; align-items: flex-end; flex: 1 1 0; min-width: 2px; height: 100%; }
+    .ocgo-usage-bar-fill {
+      display: block; width: 100%; min-height: 2px; border-radius: 2px 2px 0 0;
+      background: color-mix(in srgb, var(--dsw-alias-brand-primary) 55%, transparent);
+    }
+    @media (hover: hover) {
+      .ocgo-usage-bar:hover .ocgo-usage-bar-fill { background: var(--dsw-alias-brand-primary); }
+    }
+    .ocgo-usage-table { min-width: 960px; }
+    .ocgo-model-details { display: grid; gap: 10px; padding: 4px 0; }
+    .ocgo-model-detail-section { margin-bottom: 4px; font-size: 11.5px; line-height: 16px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-model-detail-flags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .ocgo-model-detail-grid {
+      display: grid; gap: 6px 24px;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    }
+    .ocgo-model-detail-item {
+      display: flex; justify-content: space-between; gap: 12px;
+      padding: 4px 0; border-bottom: 1px solid var(--dsw-alias-border-l1);
+      font-size: 12px; line-height: 18px;
+    }
+    .ocgo-model-detail-key { color: var(--dsw-alias-label-secondary); }
+    .ocgo-model-detail-value { text-align: right; overflow-wrap: anywhere; }
+    .ocgo-detail-row > td { background: var(--dsw-alias-bg-layer-2); }
     .ocgo-notes { border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-lg); background: var(--dsw-alias-bg-layer-1); padding: 12px 16px; }
     .ocgo-notes > summary { cursor: pointer; font-size: 12.5px; line-height: 18px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
     .ocgo-notes[open] > summary { color: var(--dsw-alias-label-primary); }
@@ -872,7 +1015,10 @@ window.__ModuleLoader__.load({
       return { value, setValue, busy, removing, error, submit, remove }
     }
 
-    const USAGE_RANGE_KEYS = [['today', 'rangeToday'], ['month', 'rangeMonth'], ['6m', 'range6m'], ['all', 'rangeAll']]
+    const USAGE_RANGE_KEYS = [
+      ['today', 'rangeToday'], ['7d', 'range7d'], ['30d', 'range30d'],
+      ['month', 'rangeMonth'], ['6m', 'range6m'], ['all', 'rangeAll'],
+    ]
 
     function useUsage(refreshToken) {
       const [range, setRange] = useState('month')
@@ -929,6 +1075,28 @@ window.__ModuleLoader__.load({
         }, t(key))))
     }
 
+    function UsageChart({ t, byDay }) {
+      const max = Math.max(...byDay.map((day) => day.tokens), 1)
+      const first = byDay[0]
+      const last = byDay[byDay.length - 1]
+      const range = first.day === last.day
+        ? fmtUtcDay(first.day)
+        : `${fmtUtcDay(first.day)} – ${fmtUtcDay(last.day)}`
+      return h('div', { className: 'ocgo-usage-chart' },
+        h('div', { className: 'ocgo-usage-chart-head' },
+          h('span', { className: 'ocgo-summary-label' }, t('usageDailyChart')),
+          h('span', { className: 'ocgo-usage-chart-range' }, range)),
+        h('div', { className: 'ocgo-usage-chart-bars', role: 'img', 'aria-label': t('usageDailyChart') },
+          byDay.map((day) => h('div', {
+            key: day.day,
+            className: 'ocgo-usage-bar',
+            title: `${fmtUtcDay(day.day)} · ${fmtTokens(day.tokens)} · ${fmtUsd(day.costUsd)}`,
+          }, h('span', {
+            className: 'ocgo-usage-bar-fill',
+            style: { height: `${Math.max(2, (day.tokens / max) * 100)}%` },
+          })))))
+    }
+
     function UsageReport({ t, report }) {
       const totals = report.totals
       const coverage = report.coverage
@@ -945,7 +1113,29 @@ window.__ModuleLoader__.load({
         ['usageOutput', totals.outputTokens],
         ['usageCacheRead', totals.cacheReadTokens],
         ['usageCacheWrite', totals.cacheWriteTokens],
+      ].map(([key, value]) => ({
+        key,
+        value,
+        percent: totals.tokens > 0 ? (value / totals.tokens) * 100 : null,
+      }))
+      const cachePrompt = totals.inputTokens + totals.cacheReadTokens
+      const cacheHit = cachePrompt > 0 ? (totals.cacheReadTokens / cachePrompt) * 100 : null
+      const avgTokens = totals.requests > 0 ? totals.tokens / totals.requests : null
+      const avgCost = totals.requests > 0 ? totals.costUsd / totals.requests : null
+      const costPerM = totals.tokens > 0 ? (totals.costUsd / totals.tokens) * 1_000_000 : null
+      const freeTokens = report.byModel.reduce(
+        (sum, row) => sum + (row.costUsd === 0 ? row.tokens : 0),
+        0,
+      )
+      const freeShare = totals.tokens > 0 ? (freeTokens / totals.tokens) * 100 : null
+      const metrics = [
+        ['usageCacheHit', cacheHit == null ? '—' : fmtPct(cacheHit), 'usageCacheHitHint'],
+        ['usageAvgTokens', avgTokens == null ? '—' : fmtTokens(avgTokens), 'usageAvgTokensHint'],
+        ['usageAvgCost', avgCost == null ? '—' : fmtUsd(avgCost), 'usageAvgCostHint'],
+        ['usageCostPerM', costPerM == null ? '—' : fmtUsd(costPerM), 'usageCostPerMHint'],
+        ['usageFreeShare', freeShare == null ? '—' : fmtPct(freeShare), 'usageFreeShareHint'],
       ]
+      const byDay = Array.isArray(report.byDay) ? report.byDay : []
       return [
         h('div', { key: 'summary', className: 'ocgo-card' },
           h('div', { className: 'ocgo-usage-stats' },
@@ -958,9 +1148,21 @@ window.__ModuleLoader__.load({
             h('div', null,
               h('div', { className: 'ocgo-summary-label' }, t('usageRequests')),
               h('div', { className: 'ocgo-usage-value' }, fmtInt(totals.requests)))),
-          h('div', { className: 'ocgo-usage-parts' }, parts.map(([key, value]) =>
-            h('span', { key, className: 'ocgo-usage-part' },
-              t(key), h('span', { className: 'ocgo-usage-part-value' }, fmtTokens(value))))),
+          h('div', { className: 'ocgo-usage-parts' }, parts.map((part) =>
+            h('span', { key: part.key, className: 'ocgo-usage-part' },
+              t(part.key),
+              h('span', { className: 'ocgo-usage-part-value' },
+                part.percent == null
+                  ? fmtTokens(part.value)
+                  : t('usagePartValue', {
+                    value: fmtTokens(part.value),
+                    percent: fmtPct(part.percent),
+                  }))))),
+          h('div', { className: 'ocgo-usage-derived' }, metrics.map(([key, value, hint]) =>
+            h('div', { key, className: 'ocgo-usage-derived-item', title: t(hint) },
+              h('div', { className: 'ocgo-summary-label' }, t(key)),
+              h('div', { className: 'ocgo-usage-derived-value' }, value)))),
+          hasData && byDay.length > 0 ? h(UsageChart, { t, byDay }) : null,
           (coverageText || !hasData)
             ? h('p', { className: 'ocgo-usage-coverage' }, coverageText || t('usageNoData'))
             : null,
@@ -968,7 +1170,7 @@ window.__ModuleLoader__.load({
           h('p', { className: 'ocgo-hint', style: { marginTop: 4 } }, t('usageLimitNote'))),
         report.byModel.length > 0
           ? h('div', { key: 'table', className: 'ocgo-table-wrap', style: { marginTop: 12 } },
-            h('table', { className: 'ocgo-table' },
+            h('table', { className: 'ocgo-table ocgo-usage-table' },
               h('thead', null,
                 h('tr', null,
                   h('th', null, t('modelColumn')),
@@ -977,19 +1179,27 @@ window.__ModuleLoader__.load({
                   h('th', { className: 'ocgo-num' }, t('usageOutput')),
                   h('th', { className: 'ocgo-num' }, t('usageCache')),
                   h('th', { className: 'ocgo-num' }, t('usageTotal')),
-                  h('th', { className: 'ocgo-num' }, t('usageValue')))),
-              h('tbody', null, report.byModel.map((row) => h('tr', { key: `${row.provider}/${row.model}` },
-                h('td', null,
-                  h('span', { className: 'ocgo-model-name' }, row.model),
-                  row.provider && !['opencode', 'opencode-go'].includes(row.provider)
-                    ? h('span', { className: 'ocgo-model-id' }, row.provider)
-                    : null),
-                h('td', { className: 'ocgo-num' }, fmtInt(row.requests)),
-                h('td', { className: 'ocgo-num' }, fmtTokens(row.inputTokens)),
-                h('td', { className: 'ocgo-num' }, fmtTokens(row.outputTokens)),
-                h('td', { className: 'ocgo-num' }, fmtTokens(row.cacheReadTokens + row.cacheWriteTokens)),
-                h('td', { className: 'ocgo-num' }, fmtTokens(row.tokens)),
-                h('td', { className: 'ocgo-num' }, fmtUsd(row.costUsd)))))))
+                  h('th', { className: 'ocgo-num' }, t('usageTokenShare')),
+                  h('th', { className: 'ocgo-num' }, t('usageValue')),
+                  h('th', { className: 'ocgo-num' }, t('usageValueShare')))),
+              h('tbody', null, report.byModel.map((row) => {
+                const tokenShare = totals.tokens > 0 ? (row.tokens / totals.tokens) * 100 : null
+                const valueShare = totals.costUsd > 0 ? (row.costUsd / totals.costUsd) * 100 : null
+                return h('tr', { key: `${row.provider}/${row.model}` },
+                  h('td', null,
+                    h('span', { className: 'ocgo-model-name' }, row.model),
+                    row.provider && !['opencode', 'opencode-go'].includes(row.provider)
+                      ? h('span', { className: 'ocgo-model-id' }, row.provider)
+                      : null),
+                  h('td', { className: 'ocgo-num' }, fmtInt(row.requests)),
+                  h('td', { className: 'ocgo-num' }, fmtTokens(row.inputTokens)),
+                  h('td', { className: 'ocgo-num' }, fmtTokens(row.outputTokens)),
+                  h('td', { className: 'ocgo-num' }, fmtTokens(row.cacheReadTokens + row.cacheWriteTokens)),
+                  h('td', { className: 'ocgo-num' }, fmtTokens(row.tokens)),
+                  h('td', { className: 'ocgo-num' }, tokenShare == null ? '—' : fmtPct(tokenShare)),
+                  h('td', { className: 'ocgo-num' }, fmtUsd(row.costUsd)),
+                  h('td', { className: 'ocgo-num' }, valueShare == null ? '—' : fmtPct(valueShare)))
+              }))))
           : null,
       ]
     }
@@ -1216,15 +1426,123 @@ window.__ModuleLoader__.load({
           h(MeterCard, { key: meter.key, t, meter, now }))))
     }
 
+    function modalityLabel(value, t) {
+      const kind = String(value || '').toLowerCase()
+      if (kind === 'text') return t('modalityText')
+      if (kind.startsWith('image/')) return t('modalityImage')
+      if (kind.startsWith('audio/')) return t('modalityAudio')
+      if (kind.startsWith('video/')) return t('modalityVideo')
+      return t('modalityOther')
+    }
+
+    function modalityList(list, t) {
+      if (!Array.isArray(list) || list.length === 0) return '—'
+      return [...new Set(list.map((value) => modalityLabel(value, t)))].join(', ')
+    }
+
+    function monthlyUsageTitle(model, t) {
+      const usage = model.monthlyUsage
+      if (!usage) return undefined
+      const value = (entry) => entry == null ? '—' : String(entry)
+      return t('monthlyUsageTiers', {
+        go: value(usage.go),
+        plus: value(usage['go-plus']),
+        teams: value(usage['go-teams']),
+      })
+    }
+
+    function monthlyUsageValue(model, planId, t) {
+      const value = model.monthlyUsage?.[planId]
+      if (value != null) return String(value)
+      return model.free ? t('free') : '—'
+    }
+
+    function ModelDetails({ t, model }) {
+      const flags = [
+        ['tools', model.tools, 'idle'],
+        ['reasoning', model.reasoning, 'idle'],
+        ['structuredOutput', model.structuredOutput, 'idle'],
+        ['zdr', model.zdr, 'ok'],
+        ['trainingData', model.training, 'warn'],
+        ['limitedRegions', model.limitedRegions, 'warn'],
+        ['featured', model.featured, 'idle'],
+      ].filter(([, value]) => value)
+      const rows = [
+        [t('monthlyUsage'), monthlyUsageTitle(model, t) || '—'],
+        [t('reasoningEfforts'), model.reasoningEfforts.length ? model.reasoningEfforts.join(', ') : '—'],
+        [t('modalities'), `${modalityList(model.inputModalities, t)} → ${modalityList(model.outputModalities, t)}`],
+        [t('knowledgeCutoff'), model.knowledge || '—'],
+        [t('releaseDate'), model.releaseDate || '—'],
+        [t('lastUpdated'), model.lastUpdated || '—'],
+        [t('openWeights'), model.openWeights ? t('yes') : t('no')],
+        [t('family'), model.family || '—'],
+        [t('canonicalId'), model.canonicalId || '—'],
+        [t('recommendedApi'), model.recommendedApi || '—'],
+        [t('temperature'), model.temperature ? t('yes') : t('no')],
+        [t('topP'), model.topP ? t('yes') : t('no')],
+        [t('topK'), model.topK ? t('yes') : t('no')],
+      ]
+      return h('div', { className: 'ocgo-model-details' },
+        flags.length > 0
+          ? h('div', null,
+            h('div', { className: 'ocgo-model-detail-section' }, t('capabilities')),
+            h('div', { className: 'ocgo-model-detail-flags' }, flags.map(([key, , tone]) =>
+              h(Pill, { key, tone }, t(key)))))
+          : null,
+        h('div', { className: 'ocgo-model-detail-grid' }, rows.map(([label, value]) =>
+          h('div', { key: label, className: 'ocgo-model-detail-item' },
+            h('span', { className: 'ocgo-model-detail-key' }, label),
+            h('span', { className: 'ocgo-model-detail-value' }, value)))))
+    }
+
     function ModelsSection({ t, snapshot }) {
       const models = snapshot.models || []
+      const planId = snapshot.subscription?.planId || 'go'
       const currentId = snapshot.currentModelId
       const [query, setQuery] = useState('')
+      const [expandedId, setExpandedId] = useState(null)
       const filtered = useMemo(() => {
         const needle = query.trim().toLowerCase()
         if (!needle) return models
         return models.filter((model) => `${model.name} ${model.id}`.toLowerCase().includes(needle))
       }, [models, query])
+
+      const rows = []
+      if (filtered.length === 0) {
+        rows.push(h('tr', { key: 'empty' },
+          h('td', { colSpan: 7, className: 'ocgo-empty' }, t('noModelsMatch'))))
+      } else {
+        for (const model of filtered) {
+          const expanded = expandedId === model.id
+          rows.push(h('tr', { key: model.id },
+            h('td', null,
+              h('div', { className: 'ocgo-model-cell' },
+                h('span', { className: 'ocgo-model-name' }, model.name),
+                model.id === currentId ? h(Pill, { tone: 'ok' }, t('current')) : null,
+                model.peakFactor > 1
+                  ? (model.peakActive
+                    ? h(Pill, { tone: 'warn', title: t('peakNowHint') }, t('peakNow', { factor: model.peakFactor }))
+                    : h(Pill, { tone: 'idle', title: t('offPeakHint') }, t('offPeak')))
+                  : null,
+                h('button', {
+                  className: 'ocgo-link-button', type: 'button',
+                  'aria-expanded': expanded,
+                  onClick: () => setExpandedId(expanded ? null : model.id),
+                }, expanded ? t('hideDetails') : t('showDetails'))),
+              h('span', { className: 'ocgo-model-id' }, model.id)),
+            h('td', { className: 'ocgo-num', title: monthlyUsageTitle(model, t) },
+              monthlyUsageValue(model, planId, t)),
+            h('td', { className: 'ocgo-num' }, model.free ? t('free') : fmtRate(model.rates.input)),
+            h('td', { className: 'ocgo-num' }, model.free ? t('free') : fmtRate(model.rates.output)),
+            h('td', { className: 'ocgo-num' }, model.free ? t('free') : fmtRate(model.rates.cacheRead)),
+            h('td', { className: 'ocgo-num' }, model.context ? fmtTokens(model.context) : '—'),
+            h('td', { className: 'ocgo-num' }, model.maxTokens ? fmtTokens(model.maxTokens) : '—')))
+          if (expanded) {
+            rows.push(h('tr', { key: `${model.id}:details`, className: 'ocgo-detail-row' },
+              h('td', { colSpan: 7 }, h(ModelDetails, { t, model }))))
+          }
+        }
+      }
 
       return h('section', { className: 'ocgo-section' },
         h('div', { className: 'ocgo-section-head' },
@@ -1247,30 +1565,13 @@ window.__ModuleLoader__.load({
               h('thead', null,
                 h('tr', null,
                   h('th', null, t('modelColumn')),
+                  h('th', { className: 'ocgo-num' }, t('monthlyUsage')),
                   h('th', { className: 'ocgo-num' }, t('inputRate')),
                   h('th', { className: 'ocgo-num' }, t('outputRate')),
                   h('th', { className: 'ocgo-num' }, t('cacheRate')),
                   h('th', { className: 'ocgo-num' }, t('context')),
                   h('th', { className: 'ocgo-num' }, t('maxOut')))),
-              h('tbody', null,
-                filtered.length === 0
-                  ? h('tr', null, h('td', { colSpan: 6, className: 'ocgo-empty' }, t('noModelsMatch')))
-                  : filtered.map((model) => h('tr', { key: model.id },
-                    h('td', null,
-                      h('div', { className: 'ocgo-model-cell' },
-                        h('span', { className: 'ocgo-model-name' }, model.name),
-                        model.id === currentId ? h(Pill, { tone: 'ok' }, t('current')) : null,
-                        model.peakFactor > 1
-                          ? (model.peakActive
-                            ? h(Pill, { tone: 'warn', title: t('peakNowHint') }, t('peakNow', { factor: model.peakFactor }))
-                            : h(Pill, { tone: 'idle', title: t('offPeakHint') }, t('offPeak')))
-                          : null),
-                      h('span', { className: 'ocgo-model-id' }, model.id)),
-                    h('td', { className: 'ocgo-num' }, model.free ? t('free') : fmtRate(model.rates.input)),
-                    h('td', { className: 'ocgo-num' }, model.free ? t('free') : fmtRate(model.rates.output)),
-                    h('td', { className: 'ocgo-num' }, model.free ? t('free') : fmtRate(model.rates.cacheRead)),
-                    h('td', { className: 'ocgo-num' }, model.context ? fmtTokens(model.context) : '—'),
-                    h('td', { className: 'ocgo-num' }, model.maxTokens ? fmtTokens(model.maxTokens) : '—')))))),
+              h('tbody', null, rows))),
         h('p', { className: 'ocgo-note-text' }, t('modelsNote')))
     }
 
@@ -1300,7 +1601,8 @@ window.__ModuleLoader__.load({
 
       const billingRows = []
       if (billing) {
-        if (billing.mode) billingRows.push([t('billingMode'), billing.mode])
+        if (billing.billingMode) billingRows.push([t('billingModeLabel'), billing.billingMode])
+        if (billing.mode) billingRows.push([t('billingType'), billing.mode])
         if (billing.balance != null) billingRows.push([t('balance'), fmtUsd(billing.balance)])
         if (billing.available != null) billingRows.push([t('available'), fmtUsd(billing.available)])
         if (billing.creditLimit != null) billingRows.push([t('creditLimit'), fmtUsd(billing.creditLimit)])
@@ -1309,6 +1611,9 @@ window.__ModuleLoader__.load({
         }
         if (billing.canPurchaseCredits != null) {
           billingRows.push([t('canPurchase'), billing.canPurchaseCredits ? t('yes') : t('no')])
+        }
+        if (billing.invoiceCount != null) {
+          billingRows.push([t('invoices'), fmtInt(billing.invoiceCount)])
         }
       }
 

@@ -1,9 +1,9 @@
 {
   "name": "dsh-opencode-go-panel",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
-  "description": "OpenCode Go subscription status, usage meters, usage history, model catalog, and per-million-token rates for the DeepSeek Harness sidebar.",
+  "description": "OpenCode Go subscription status, usage meters, usage history, model details, and per-million-token rates for the DeepSeek Harness sidebar.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
