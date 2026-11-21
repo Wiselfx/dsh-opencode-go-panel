@@ -1,7 +1,7 @@
 /**
  * Host half of the OpenCode Go panel. It owns credential resolution, the
- * Console/inference reads, and the small same-origin JSON endpoint the panel
- * uses. No key or token is ever returned to the browser.
+ * Console/inference reads, and the same-origin JSON endpoints the panel uses.
+ * No key or token is ever returned to the browser.
  */
 import { createProvider } from './data.js'
 
@@ -9,6 +9,8 @@ export const inject = ['webServer', 'connection']
 
 const STATUS_PATH = '/_dsh/opencode-go/status'
 const CONNECT_PATH = '/_dsh/opencode-go/connect'
+const DISCONNECT_PATH = '/_dsh/opencode-go/disconnect'
+const MAX_BODY_BYTES = 16_384
 
 function sendJson(res, status, body) {
   const data = JSON.stringify(body)
@@ -20,20 +22,43 @@ function sendJson(res, status, body) {
   res.end(data)
 }
 
+function bodyError(code, status, message) {
+  const error = new Error(message)
+  error.code = code
+  error.status = status
+  return error
+}
+
 async function readJsonBody(req) {
   const chunks = []
   let size = 0
   for await (const chunk of req) {
     size += chunk.length
-    if (size > 16_384) throw new Error('Request body is too large')
+    if (size > MAX_BODY_BYTES) throw bodyError('BODY_TOO_LARGE', 413, 'Request body is too large')
     chunks.push(Buffer.from(chunk))
   }
   if (!chunks.length) return {}
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  } catch {
+    throw bodyError('INVALID_JSON', 400, 'Request body is not valid JSON')
+  }
 }
 
-function safeMessage(error) {
-  return error instanceof Error ? error.message : String(error)
+function failureBody(error) {
+  const code = typeof error?.code === 'string' ? error.code : 'INTERNAL'
+  return {
+    ok: false,
+    error: code,
+    detail: typeof error?.detail === 'string' && error.detail
+      ? error.detail
+      : (error instanceof Error ? error.message : String(error)),
+  }
+}
+
+function rejectionStatus(error) {
+  const status = Number(error?.status)
+  return Number.isInteger(status) && status >= 400 && status <= 599 ? status : 500
 }
 
 export function apply(ctx, config = {}) {
@@ -42,56 +67,69 @@ export function apply(ctx, config = {}) {
   if (!webServer || !connection) return
   const provider = createProvider(ctx, config)
 
-  const statusRoute = webServer.register({
+  function authorize(req, res) {
+    const rejection = connection.requestRejection(req)
+    if (rejection === undefined) return true
+    sendJson(res, rejection, { ok: false, error: rejection === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN' })
+    return false
+  }
+
+  ctx.effect(() => webServer.register({
     kind: 'exact',
     path: STATUS_PATH,
     async handler(req, res) {
-      const rejection = connection.requestRejection(req)
-      if (rejection !== undefined) {
-        sendJson(res, rejection, { ok: false, error: rejection === 401 ? 'Unauthorized' : 'Forbidden' })
+      if (!authorize(req, res)) return
+      if (req.method !== 'GET') {
+        sendJson(res, 405, { ok: false, error: 'METHOD_NOT_ALLOWED' })
         return
       }
       try {
         const url = new URL(req.url || STATUS_PATH, 'http://localhost')
-        const snapshot = await provider.get(url.searchParams.get('refresh') === '1')
-        sendJson(res, 200, snapshot)
+        sendJson(res, 200, await provider.get(url.searchParams.get('refresh') === '1'))
       } catch (error) {
         ctx.logger?.warn?.(error instanceof Error ? error : new Error(String(error)))
-        sendJson(res, 500, { ok: false, error: safeMessage(error) })
+        sendJson(res, 500, failureBody(error))
       }
     },
-  })
+  }), 'opencode-go: status route')
 
-  const connectRoute = webServer.register({
+  ctx.effect(() => webServer.register({
     kind: 'exact',
     path: CONNECT_PATH,
     async handler(req, res) {
+      if (!authorize(req, res)) return
       if (req.method !== 'POST') {
-        sendJson(res, 405, { ok: false, error: 'Method not allowed' })
-        return
-      }
-      const rejection = connection.requestRejection(req)
-      if (rejection !== undefined) {
-        sendJson(res, rejection, { ok: false, error: rejection === 401 ? 'Unauthorized' : 'Forbidden' })
+        sendJson(res, 405, { ok: false, error: 'METHOD_NOT_ALLOWED' })
         return
       }
       const type = String(req.headers['content-type'] || '')
       if (!type.toLowerCase().startsWith('application/json')) {
-        sendJson(res, 415, { ok: false, error: 'Expected application/json' })
+        sendJson(res, 415, { ok: false, error: 'EXPECTED_JSON' })
         return
       }
       try {
         const body = await readJsonBody(req)
-        const snapshot = await provider.connect(body?.apiKey)
-        sendJson(res, 200, snapshot)
+        sendJson(res, 200, await provider.connect(body?.apiKey))
       } catch (error) {
-        sendJson(res, 400, { ok: false, error: safeMessage(error) })
+        sendJson(res, rejectionStatus(error), failureBody(error))
       }
     },
-  })
+  }), 'opencode-go: connect route')
 
-  ctx.effect(() => () => {
-    statusRoute()
-    connectRoute()
-  }, 'opencode-go: HTTP routes')
+  ctx.effect(() => webServer.register({
+    kind: 'exact',
+    path: DISCONNECT_PATH,
+    async handler(req, res) {
+      if (!authorize(req, res)) return
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { ok: false, error: 'METHOD_NOT_ALLOWED' })
+        return
+      }
+      try {
+        sendJson(res, 200, await provider.disconnect())
+      } catch (error) {
+        sendJson(res, rejectionStatus(error), failureBody(error))
+      }
+    },
+  }), 'opencode-go: disconnect route')
 }

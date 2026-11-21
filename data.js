@@ -1,111 +1,28 @@
 /**
  * OpenCode Go API provider for the Harness panel.
  *
- * Everything shown by the panel comes from OpenCode Go itself:
+ * Everything the panel shows comes from OpenCode Go itself:
  * - subscription state and exact dollar meters from the Console status API;
- * - the percentage usage fallback from the inference API;
- * - the authenticated model catalog and its published per-million rates.
+ * - a percentage-only usage fallback from the inference API;
+ * - the model catalog with its published per-million-token rates.
  *
- * OpenCode does not expose token totals through these APIs, so the panel
- * deliberately does not estimate or reconstruct them from local session logs.
+ * OpenCode exposes dollars and percentages, not token totals, so the panel
+ * never estimates or reconstructs tokens from local session logs.
  */
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
-
 const DEFAULT_API_ORIGIN = 'https://opencode.ai'
-const PANEL_CREDENTIAL = 'OPENCODE_GO_PANEL_API_KEY'
-const USER_AGENT = 'dsh-opencode-go-panel/1.2'
+/** The panel's own credential record: `<package>/<id>` in the Harness record space. */
+const CREDENTIAL_RECORD = 'dsh-opencode-go-panel/api-key'
+const USER_AGENT = 'dsh-opencode-go-panel/1.3'
 const MICROCENTS_PER_USD = 100_000_000
 const DAY = 86_400_000
 const HOUR = 3_600_000
+const MIN_REFRESH_SECONDS = 60
 
+/** Plan names and monthly prices. Dollar meters themselves always come from the API. */
 const PLANS = {
-  go: { name: 'Go', priceMonthly: 10, caps: { rolling: 12, weekly: 30, monthly: 60 } },
-  'go-plus': { name: 'Go Plus', priceMonthly: 40, caps: { rolling: 48, weekly: 120, monthly: 240 } },
-  'go-teams': { name: 'Go Teams', priceMonthly: 20, caps: { rolling: 12, weekly: 30, monthly: 60 } },
-}
-
-/**
- * Monthly allowances published by OpenCode for each Go model, in dollars of
- * list-price usage. `null` means free/unlimited. The API meter itself is a
- * single normalized pool; these values are what each model can consume on its
- * own. They are OpenCode's published plan data, not derived from local usage.
- */
-const GO_ALLOWANCES = {
-  'deepseek-v4.1-flash': 100,
-  'deepseek-v4-pro': 15,
-  'glm-5.2': 60,
-  'glm-5.3': 15,
-  'glm-5.3-flash': 60,
-  'grok-4.7': 15,
-  'gpt-5.6-luna': 15,
-  'gpt-6-luna': 15,
-  'claude-haiku-5-5': 15,
-  'kimi-k3': 15,
-  'kimi-k3.1-pro': 15,
-  'kimi-k2.7-code': 60,
-  'minimax-m3': 60,
-  'minimax-m3.1-flash': 20,
-  'mimo-v2.6-flash': 60,
-  'mimo-v2.6-pro': 15,
-  'mimo-v2.5': 60,
-  'mimo-v2.5-pro': 15,
-  'muse-spark-1.2-contributor': 60,
-  'muse-spark-1.3-contributor': 60,
-  'qwen3.8-max': 15,
-  'qwen3.8-flash': 30,
-  'qwen3.7-plus': 60,
-  'longcat-2.0': 60,
-  'step-5-preview': 15,
-  'hy3': 60,
-  'hy4-preview': 30,
-  'gemini-4-argon': 30,
-  'beam-free': null,
-  'iceman-contributor-free': null,
-}
-
-const GO_PLUS_ALLOWANCES = {
-  'deepseek-v4.1-flash': 200,
-  'deepseek-v4-pro': 60,
-  'glm-5.2': 180,
-  'glm-5.3': 120,
-  'glm-5.3-flash': 180,
-  'grok-4.7': 60,
-  'gpt-5.6-luna': 60,
-  'gpt-6-luna': 60,
-  'claude-haiku-5-5': 60,
-  'kimi-k3': 60,
-  'kimi-k3.1-pro': 60,
-  'kimi-k2.7-code': 180,
-  'minimax-m3': 180,
-  'minimax-m3.1-flash': 80,
-  'mimo-v2.6-flash': 120,
-  'mimo-v2.6-pro': 60,
-  'mimo-v2.5': 120,
-  'mimo-v2.5-pro': 60,
-  'muse-spark-1.2-contributor': 120,
-  'muse-spark-1.3-contributor': 120,
-  'qwen3.8-max': 60,
-  'qwen3.8-flash': 90,
-  'qwen3.7-plus': 180,
-  'longcat-2.0': 240,
-  'step-5-preview': 60,
-  'hy3': 240,
-  'hy4-preview': 120,
-  'gemini-4-argon': 120,
-  'beam-free': null,
-  'iceman-contributor-free': null,
-}
-
-const GO_TEAMS_ALLOWANCES = Object.fromEntries(
-  Object.entries(GO_ALLOWANCES).map(([id, value]) => [id, value === null ? null : value + 5]),
-)
-
-const MODEL_ALLOWANCES = {
-  go: GO_ALLOWANCES,
-  'go-plus': GO_PLUS_ALLOWANCES,
-  'go-teams': GO_TEAMS_ALLOWANCES,
+  go: { name: 'Go', priceMonthly: 10 },
+  'go-plus': { name: 'Go Plus', priceMonthly: 40 },
+  'go-teams': { name: 'Go Teams', priceMonthly: 20 },
 }
 
 const DEFAULT_CONFIG = {
@@ -116,23 +33,36 @@ const DEFAULT_CONFIG = {
   apiOrigin: DEFAULT_API_ORIGIN,
 }
 
-function configFor(config = {}) {
-  return {
-    ...DEFAULT_CONFIG,
-    ...config,
-    providers: Array.isArray(config.providers) && config.providers.length
-      ? config.providers.map(String)
-      : DEFAULT_CONFIG.providers,
+/** A failure the panel UI can localize from its `code`. */
+export class PanelApiError extends Error {
+  constructor(code, status = 500, detail = null) {
+    super(code)
+    this.name = 'PanelApiError'
+    this.code = code
+    this.status = status
+    this.detail = detail
   }
 }
 
-function planFor(product, config, memberCount = 1) {
-  const id = typeof product === 'string' && PLANS[product] ? product : (PLANS[config.plan] ? config.plan : 'go')
-  const plan = PLANS[id]
-  const price = id === 'go-teams'
-    ? plan.priceMonthly * Math.max(1, memberCount)
-    : (Number.isFinite(config.monthlyPriceUsd) ? config.monthlyPriceUsd : plan.priceMonthly)
-  return { id, name: plan.name, priceMonthly: price, caps: plan.caps }
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function configFor(config = {}) {
+  const refreshSeconds = Number(config.refreshSeconds)
+  return {
+    providers: Array.isArray(config.providers) && config.providers.length
+      ? config.providers.map(String)
+      : [...DEFAULT_CONFIG.providers],
+    refreshSeconds: Number.isFinite(refreshSeconds)
+      ? Math.max(MIN_REFRESH_SECONDS, Math.round(refreshSeconds))
+      : DEFAULT_CONFIG.refreshSeconds,
+    plan: typeof config.plan === 'string' ? config.plan : DEFAULT_CONFIG.plan,
+    monthlyPriceUsd: Number.isFinite(config.monthlyPriceUsd) ? config.monthlyPriceUsd : null,
+    apiOrigin: typeof config.apiOrigin === 'string' && config.apiOrigin.trim()
+      ? config.apiOrigin.trim().replace(/\/+$/, '')
+      : DEFAULT_API_ORIGIN,
+  }
 }
 
 function usdFromMicroCents(value) {
@@ -145,25 +75,32 @@ function numberOrNull(value) {
   return Number.isFinite(value) ? value : null
 }
 
+function dateOrNull(value) {
+  return typeof value === 'string' && value ? Date.parse(value) || null : null
+}
+
 function modelKey(value) {
   return String(value || '').toLowerCase().replace(/^[^/]+\//, '')
 }
 
-async function fileExists(path) {
-  try {
-    return (await stat(path)).isFile()
-  } catch {
-    return false
-  }
+function authorization(key) {
+  return { authorization: `Bearer ${key}` }
 }
 
-async function fetchJson(url, headers, timeoutMs = 15_000) {
+function reasonForStatus(status) {
+  if (status === 401) return 'invalid-key'
+  if (status === 403) return 'forbidden'
+  if (status === 0) return 'network'
+  return 'http'
+}
+
+async function fetchJson(url, headers = {}, timeoutMs = 15_000) {
   const response = await fetch(url, {
     headers: { accept: 'application/json', 'user-agent': USER_AGENT, ...headers },
     signal: AbortSignal.timeout(timeoutMs),
   })
   const text = await response.text()
-  let body
+  let body = null
   try {
     body = text.length ? JSON.parse(text) : null
   } catch {
@@ -172,541 +109,421 @@ async function fetchJson(url, headers, timeoutMs = 15_000) {
   return { ok: response.ok, status: response.status, body, text: text.slice(0, 300) }
 }
 
-/** The panel's own isolated key only — no env, no other apps' auth, no OAuth.
- *  Stored under PANEL_CREDENTIAL (never the shared OPENCODE_GO_API_KEY),
- *  fallback to the panel's own ~/.dsh/opencode-go/api-key file. */
-async function resolveSavedKeys(ctx, config) {
-  const found = []
-  const ref = PANEL_CREDENTIAL
-  const credentials = ctx.get?.('credentials')
-  if (credentials?.resolve) {
-    try {
-      const hit = await credentials.resolve(ref)
-      if (hit?.value && typeof hit.value === 'string' && hit.value.trim().length >= 8) {
-        found.push({ key: hit.value.trim(), source: 'Saved key' })
-        return found
-      }
-    } catch {
-      // Missing store entry just means no key saved yet.
-    }
-  }
-  const localPath = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'opencode-go', 'api-key')
-  if (await fileExists(localPath)) {
-    try {
-      const value = (await readFile(localPath, 'utf8')).trim()
-      if (value.length >= 8) found.push({ key: value, source: 'Saved by this panel' })
-    } catch {
-      // Ignore unreadable optional storage.
-    }
-  }
-  return found
+/** A short, human-readable fragment of a failed response for the panel's error line. */
+function remoteDetail(result) {
+  const remote = result.body?.error || result.body?.message
+  if (typeof remote === 'string' && remote) return remote
+  if (result.text) return result.text
+  return `HTTP ${result.status}`
 }
 
-/** Percentage usage with the panel key. */
-async function fetchUsageForKeys(keys, config) {
-  let lastError = null
-  for (const candidate of keys) {
-    try {
-      const result = await fetchJson(`${config.apiOrigin}/zen/go/v1/usage`, {
-        authorization: `Bearer ${candidate.key}`,
-      })
-      if (result.ok && result.body?.usage) {
-        return { ...result, candidate }
-      }
-      lastError = `HTTP ${result.status}`
-      if (result.status !== 401 && result.status !== 403) break
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error)
-    }
+async function readConsoleStatus(config, key) {
+  try {
+    const result = await fetchJson(`${config.apiOrigin}/console/api/go/status`, authorization(key))
+    if (result.ok && result.body?.access) return { ok: true, body: result.body }
+    if (result.ok) return { ok: false, status: 200, reason: 'no-subscription', detail: remoteDetail(result) }
+    return { ok: false, status: result.status, reason: reasonForStatus(result.status), detail: remoteDetail(result) }
+  } catch (error) {
+    return { ok: false, status: 0, reason: 'network', detail: errorMessage(error) }
   }
-  return { ok: false, candidate: keys[0], error: lastError || 'No API key found' }
 }
 
-/** Console billing balance with the panel key. */
-async function fetchBillingForKeys(keys, config) {
-  let lastError = null
-  for (const candidate of keys) {
-    try {
-      const result = await fetchJson(`${config.apiOrigin.replace(/\/$/, '')}/console/api/billing/status`, {
-        authorization: `Bearer ${candidate.key}`,
-      })
-      if (result.ok && result.body) {
-        return { ...result, candidate }
-      }
-      lastError = `HTTP ${result.status}`
-      if (result.status !== 401 && result.status !== 403) break
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error)
-    }
+async function readBilling(config, key) {
+  try {
+    const result = await fetchJson(`${config.apiOrigin}/console/api/billing/status`, authorization(key))
+    if (result.ok && result.body) return { ok: true, body: result.body }
+    return { ok: false, status: result.status, reason: reasonForStatus(result.status), detail: remoteDetail(result) }
+  } catch (error) {
+    return { ok: false, status: 0, reason: 'network', detail: errorMessage(error) }
   }
-  return { ok: false, candidate: keys[0], error: lastError || 'No API key found' }
 }
 
-/** Exact Console status directly with an API key — no local OAuth sign-in needed.
- *  Keys are workspace-scoped, so no x-org-id header is required.
- *  Needs Usage:Read (Billing:Read also works for /billing/status). */
-async function fetchStatusForKeys(keys, config) {
-  let lastError = null
-  for (const candidate of keys) {
-    try {
-      const result = await fetchJson(`${config.apiOrigin.replace(/\/$/, '')}/console/api/go/status`, {
-        authorization: `Bearer ${candidate.key}`,
-      })
-      if (result.ok && result.body?.access) {
-        return { ...result, candidate }
-      }
-      lastError = `HTTP ${result.status}`
-      if (result.status !== 401 && result.status !== 403) break
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error)
-    }
+async function readUsage(config, key) {
+  try {
+    const result = await fetchJson(`${config.apiOrigin}/zen/go/v1/usage`, authorization(key))
+    if (result.ok && result.body?.usage) return { ok: true, body: result.body }
+    return { ok: false, status: result.status, reason: reasonForStatus(result.status), detail: remoteDetail(result) }
+  } catch (error) {
+    return { ok: false, status: 0, reason: 'network', detail: errorMessage(error) }
   }
-  return { ok: false, candidate: keys[0], error: lastError || 'No API key found' }
 }
 
-async function fetchModels(config, headers) {
+/**
+ * Read the model catalog. An authenticated call returns the models this
+ * workspace may use; a public call is the fallback. The public call never
+ * inherits the authenticated result, so workspace availability is never
+ * inferred from the public catalog.
+ */
+async function readModels(config, key) {
   const urls = [
     `${config.apiOrigin}/zen/go/v1/models`,
     `${config.apiOrigin}/inference/go/v1/models`,
   ]
   for (const url of urls) {
     try {
-      const result = await fetchJson(url, headers)
+      const result = await fetchJson(url, key ? authorization(key) : {})
       if (result.ok && Array.isArray(result.body?.data)) {
-        return { data: result.body.data, authenticated: Boolean(headers.authorization) }
+        return { data: result.body.data, source: key ? 'workspace' : 'public' }
       }
     } catch {
-      // Try the alternate public catalog URL.
+      // Try the alternate catalog URL.
     }
   }
-  if (headers.authorization) {
-    // The authenticated call can fail on an expired key; a public catalog is
-    // still better than an empty page, and the caller records the fallback.
-    return fetchModels(config, {})
+  return { data: [], source: 'none' }
+}
+
+/** Verify a pasted key before it is stored, so a typo never replaces a working key. */
+async function probeKey(config, key) {
+  const status = await readConsoleStatus(config, key)
+  if (status.ok) return { ok: true }
+  const usage = await readUsage(config, key)
+  if (usage.ok) return { ok: true }
+  const failure = status.reason === 'network' && usage.reason !== 'network' ? usage : status
+  return { ok: false, reason: failure.reason, detail: failure.detail }
+}
+
+async function readStoredKey(ctx) {
+  const credentials = ctx.get?.('credentials')
+  if (!credentials?.readRecord) return { key: null }
+  try {
+    const record = await credentials.readRecord(CREDENTIAL_RECORD)
+    if (record?.kind === 'api-key' && typeof record.key === 'string') {
+      const key = record.key.trim()
+      if (key.length >= 8) return { key }
+    }
+  } catch {
+    // An unreadable store means no key is available; the panel reports it when saving.
   }
-  return { data: [], authenticated: false }
+  return { key: null }
 }
 
-function describePeak(multiplier) {
-  const factor = Number(multiplier?.factor)
-  if (!Number.isFinite(factor) || factor <= 1) return null
-  return `${factor}× during scheduled peak hours`
+function planFor(product, config) {
+  const requested = typeof product === 'string' ? product : ''
+  const id = PLANS[requested] ? requested : (PLANS[config.plan] ? config.plan : 'go')
+  const plan = PLANS[id]
+  return {
+    id,
+    name: plan.name,
+    priceMonthly: Number.isFinite(config.monthlyPriceUsd) ? config.monthlyPriceUsd : plan.priceMonthly,
+  }
 }
 
-function normalizeModels(raw) {
-  return raw.map((model) => {
-    const text = model.cost?.text || {}
-    const rates = {
-      input: numberOrNull(text.input?.price) ?? 0,
-      output: numberOrNull(text.output?.price) ?? 0,
-      cacheRead: numberOrNull(text.input?.cache?.read) ?? 0,
-      cacheWrite: numberOrNull(text.input?.cache?.write) ?? 0,
-    }
-    const multiplier = Array.isArray(model.cost?.multipliers) ? model.cost.multipliers[0] : null
-    return {
-      id: String(model.id || ''),
-      canonicalId: typeof model.canonical_id === 'string' ? model.canonical_id : null,
-      name: typeof model.name === 'string' && model.name ? model.name : String(model.id || ''),
-      context: numberOrNull(model.limit?.context),
-      maxTokens: numberOrNull(model.limit?.output),
-      rates,
-      free: rates.input === 0 && rates.output === 0,
-      reasoning: Boolean(model.capabilities?.reasoning?.supported),
-      vision: Array.isArray(model.modalities?.input)
-        && model.modalities.input.some((kind) => String(kind).startsWith('image/')),
-      peakFactor: numberOrNull(multiplier?.factor),
-      peakNote: describePeak(multiplier),
-      releaseDate: typeof model.release_date === 'string' ? model.release_date : null,
-      family: typeof model.family === 'string' ? model.family : null,
-    }
-  }).filter((model) => model.id)
+function buildMeter(key, {
+  limit, used, percent: givenPercent, startsAt, resetsAt, rateLimited = false, estimated = false,
+}) {
+  const now = Date.now()
+  const usable = limit != null && limit > 0 && used != null
+  const percent = usable
+    ? Math.max(0, Math.min(100, (used / limit) * 100))
+    : Math.max(0, Math.min(100, Number(givenPercent) || 0))
+  const elapsed = startsAt && resetsAt && resetsAt > startsAt
+    ? Math.max(0, Math.min(1, (now - startsAt) / (resetsAt - startsAt)))
+    : null
+  return {
+    key,
+    used: used ?? null,
+    limit: limit ?? null,
+    remaining: limit != null && used != null ? Math.max(0, limit - used) : null,
+    percent,
+    startsAt: startsAt || null,
+    resetsAt: resetsAt || null,
+    elapsed,
+    pace: elapsed != null && elapsed > 0.02 ? percent / 100 / elapsed : null,
+    rateLimited: Boolean(rateLimited),
+    estimated: Boolean(estimated) || limit == null,
+  }
 }
 
 function statusMeters(statusDto) {
   const access = statusDto?.access || {}
   const meters = access.meters || {}
-  const now = Date.now()
   const raw = [
-    ['rolling', '5-hour window', meters.fiveHour, access.startsAt],
-    ['weekly', 'Weekly', meters.week, access.startsAt],
-    ['monthly', 'Monthly', meters.month, access.startsAt],
+    ['rolling', meters.fiveHour, access.startsAt],
+    ['weekly', meters.week, access.startsAt],
+    ['monthly', meters.month, access.startsAt],
   ]
-  return raw.map(([key, label, meter, fallbackStart]) => {
+  return raw.map(([key, meter, fallbackStart]) => {
     if (!meter) return null
-    const limit = usdFromMicroCents(meter.limitMicroCents)
-    const used = usdFromMicroCents(meter.usedMicroCents)
-    const startsAt = Date.parse(meter.startsAt || fallbackStart || '') || null
-    const resetsAt = Date.parse(meter.resetsAt || '') || null
-    const percent = limit && limit > 0 ? Math.max(0, Math.min(100, (used / limit) * 100)) : 0
-    const elapsed = startsAt && resetsAt && resetsAt > startsAt
-      ? Math.max(0, Math.min(1, (now - startsAt) / (resetsAt - startsAt)))
-      : null
-    return {
-      key,
-      label,
-      used,
-      limit,
-      remaining: limit != null && used != null ? Math.max(0, limit - used) : null,
-      percent,
-      status: meter.status || 'ok',
-      startsAt,
-      resetsAt,
-      elapsed,
-      pace: elapsed && elapsed > 0.02 ? percent / 100 / elapsed : null,
+    return buildMeter(key, {
+      limit: usdFromMicroCents(meter.limitMicroCents),
+      used: usdFromMicroCents(meter.usedMicroCents),
+      startsAt: dateOrNull(meter.startsAt) || dateOrNull(fallbackStart),
+      resetsAt: dateOrNull(meter.resetsAt),
       rateLimited: meter.status === 'rate-limited',
-    }
+    })
   }).filter(Boolean)
 }
 
-function usageMeters(usageDto, plan) {
+/** The percentage API has no dollar pool: expose percentages only, never invented dollars. */
+function usageMeters(usageDto) {
   const usage = usageDto?.usage || {}
-  const now = Date.now()
-  const mapping = [
-    ['rolling', '5-hour window', usage.rolling, 5 * HOUR, plan.caps.rolling],
-    ['weekly', 'Weekly', usage.weekly, 7 * DAY, plan.caps.weekly],
-    ['monthly', 'Monthly', usage.monthly, 30 * DAY, plan.caps.monthly],
+  const settings = [
+    ['rolling', usage.rolling, 5 * HOUR],
+    ['weekly', usage.weekly, 7 * DAY],
+    ['monthly', usage.monthly, 30 * DAY],
   ]
-  return mapping.map(([key, label, meter, length, cap]) => {
+  return settings.map(([key, meter, length]) => {
     if (!meter) return null
-    const percent = Number(meter.percent) || 0
-    const limit = cap
-    const used = (percent / 100) * limit
-    const resetsAt = Date.parse(meter.resetsAt || '') || null
-    const startsAt = resetsAt != null ? resetsAt - length : null
-    const elapsed = startsAt && resetsAt && resetsAt > startsAt
-      ? Math.max(0, Math.min(1, (now - startsAt) / (resetsAt - startsAt)))
-      : null
-    return {
-      key,
-      label,
-      used,
-      limit,
-      remaining: Math.max(0, limit - used),
-      percent,
-      status: meter.status || 'ok',
-      startsAt,
+    const resetsAt = dateOrNull(meter.resetsAt)
+    return buildMeter(key, {
+      percent: meter.percent,
+      startsAt: resetsAt != null ? resetsAt - length : null,
       resetsAt,
-      elapsed,
-      pace: elapsed && elapsed > 0.02 ? percent / 100 / elapsed : null,
       rateLimited: meter.status === 'rate-limited',
-    }
+      estimated: true,
+    })
   }).filter(Boolean)
 }
 
-function allowanceFor(planId, modelId) {
-  const table = MODEL_ALLOWANCES[planId] || MODEL_ALLOWANCES.go
-  const key = modelKey(modelId)
-  if (Object.prototype.hasOwnProperty.call(table, key)) return table[key]
-  return undefined
-}
-
-/** The largest single-model cap is the plan's base unit, so every model fits one meter. */
-function baseAllowanceFor(planId) {
-  const table = MODEL_ALLOWANCES[planId] || MODEL_ALLOWANCES.go
-  const caps = Object.values(table).filter((value) => typeof value === 'number')
-  return caps.length ? Math.max(...caps) : 100
-}
-
-function modelAllowanceInfo(model, planId, baseAllowance, baseUsed, baseRemaining) {
-  const published = allowanceFor(planId, model.id)
-  const unlimited = published === null
-  const monthlyAllowance = typeof published === 'number' ? published : null
-  const fraction = baseAllowance > 0 && baseUsed != null ? baseUsed / baseAllowance : null
-  return {
-    monthlyAllowance,
-    unlimited,
-    allowancePublished: published !== undefined,
-    burnMultiplier: monthlyAllowance != null ? baseAllowance / monthlyAllowance : null,
-    usedIfExclusive: monthlyAllowance != null && fraction != null ? fraction * monthlyAllowance : null,
-    remainingIfExclusive: monthlyAllowance != null && baseRemaining != null
-      ? (baseRemaining / baseAllowance) * monthlyAllowance
-      : null,
-  }
-}
-
-function snapshotError(error) {
-  return error instanceof Error ? error.message : String(error)
-}
-
-async function buildSnapshot(ctx, config) {
-  const warnings = []
-  const errors = []
-  // Key-only: the user pastes a read-only API key; nothing else is read.
-  const savedKeys = await resolveSavedKeys(ctx, config)
-
-  if (!savedKeys.length) {
+function normalizeModels(raw) {
+  return raw.map((model) => {
+    const text = model?.cost?.text || {}
+    const rates = {
+      input: numberOrNull(text.input?.price) ?? 0,
+      output: numberOrNull(text.output?.price) ?? 0,
+      cacheRead: numberOrNull(text.input?.cache?.read) ?? 0,
+    }
+    const multiplier = Array.isArray(model?.cost?.multipliers) ? model.cost.multipliers[0] : null
     return {
-      ok: true,
-      version: 2,
-      fetchedAt: Date.now(),
-      connected: false,
-      auth: {
-        key: { configured: false, source: null, error: null },
-        console: { configured: false, via: null, source: null, workspaceName: null },
-      },
-      subscription: null,
-      billing: null,
-      meters: [],
-      allowance: null,
-      currentModel: null,
-      models: [],
-      modelScope: 'catalog',
-      availableCount: null,
-      warnings: [],
-      errors: [],
+      id: String(model?.id || ''),
+      name: typeof model?.name === 'string' && model.name ? model.name : String(model?.id || ''),
+      context: numberOrNull(model?.limit?.context),
+      maxTokens: numberOrNull(model?.limit?.output),
+      rates,
+      free: rates.input === 0 && rates.output === 0,
+      peakFactor: numberOrNull(multiplier?.factor),
     }
+  }).filter((model) => model.id)
+}
+
+function subscriptionFromStatus(statusDto, plan) {
+  const access = statusDto.access || {}
+  return {
+    source: 'console',
+    plan: plan.name,
+    priceMonthly: plan.priceMonthly,
+    currency: String(statusDto.renewalCurrency || 'usd').toUpperCase(),
+    status: statusDto.cancelAtPeriodEnd ? 'cancelling' : 'active',
+    cancelAtPeriodEnd: Boolean(statusDto.cancelAtPeriodEnd),
+    renewalStopReason: typeof statusDto.renewalStopReason === 'string' ? statusDto.renewalStopReason : null,
+    resumability: typeof statusDto.resumability === 'string' ? statusDto.resumability : null,
+    nextPeriodPaid: typeof statusDto.nextPeriodPaid === 'boolean' ? statusDto.nextPeriodPaid : null,
+    renewalPending: typeof statusDto.renewalPending === 'boolean' ? statusDto.renewalPending : null,
+    useBalance: typeof statusDto.useBalance === 'boolean' ? statusDto.useBalance : null,
+    needsPaymentMethod: statusDto.resumability === 'needs-payment-method',
+    accessEndsAt: dateOrNull(access.endsAt),
+    upgrade: statusDto.upgradePrice ? {
+      amount: usdFromMicroCents(statusDto.upgradePrice.amountMicroCents),
+      currency: String(statusDto.upgradePrice.currency || 'usd').toUpperCase(),
+    } : null,
+    teams: statusDto.teamsUpgradePrice ? {
+      amount: usdFromMicroCents(statusDto.teamsUpgradePrice.amountMicroCents),
+      currency: String(statusDto.teamsUpgradePrice.currency || 'usd').toUpperCase(),
+      memberCount: numberOrNull(statusDto.teamsUpgradePrice.memberCount),
+    } : null,
   }
+}
 
-  const modelHeaders = { authorization: `Bearer ${savedKeys[0].key}` }
-
-  const [apiStatusResult, apiBillingResult, usageResult, publicModels, workspaceModels] = await Promise.all([
-    fetchStatusForKeys(savedKeys, config).catch((error) => ({ ok: false, status: 0, error: snapshotError(error) })),
-    fetchBillingForKeys(savedKeys, config).catch(() => ({ ok: false, status: 0 })),
-    fetchUsageForKeys(savedKeys, config),
-    fetchModels(config, {}).catch(() => ({ data: [], authenticated: false })),
-    modelHeaders.authorization
-      ? fetchModels(config, modelHeaders).catch(() => ({ data: [], authenticated: false }))
-      : Promise.resolve(null),
-  ])
-  const workspaceIds = workspaceModels?.data?.length
-    ? new Set(workspaceModels.data.map((model) => String(model.id)))
-    : null
-  const modelResult = publicModels.data.length
-    ? publicModels
-    : (workspaceModels || { data: [], authenticated: false })
-
-  const statusResult = apiStatusResult
-  const statusSource = apiStatusResult?.ok ? 'api-key' : null
-  const statusDto = statusResult?.ok ? statusResult.body : null
-  const plan = planFor(statusDto?.product || config.plan, config, statusDto?.teamsUpgradePrice?.memberCount || 1)
-  const meterList = statusDto
-    ? statusMeters(statusDto)
-    : usageMeters(usageResult.ok ? usageResult.body : null, plan)
-  const monthMeter = meterList.find((meter) => meter.key === 'monthly') || null
-
-  let subscription = null
-  if (statusDto) {
-    const access = statusDto.access || {}
-    const month = access.meters?.month
-    const monthlyLimit = usdFromMicroCents(month?.limitMicroCents)
-    const monthlyUsed = usdFromMicroCents(month?.usedMicroCents)
-    subscription = {
-      source: 'console',
-      product: statusDto.product || plan.id,
-      renewalProduct: statusDto.renewalProduct || null,
-      plan: plan.name,
-      planId: plan.id,
-      priceMonthly: plan.priceMonthly,
-      currency: String(statusDto.renewalCurrency || 'usd').toUpperCase(),
-      status: statusDto.cancelAtPeriodEnd ? 'cancelling' : (statusDto.access ? 'active' : 'unknown'),
-      cancelAtPeriodEnd: Boolean(statusDto.cancelAtPeriodEnd),
-      renewalStopReason: statusDto.renewalStopReason || null,
-      renewalPending: Boolean(statusDto.renewalPending),
-      nextPeriodPaid: Boolean(statusDto.nextPeriodPaid),
-      useBalance: Boolean(statusDto.useBalance),
-      resumability: statusDto.resumability || null,
-      needsPaymentMethod: statusDto.resumability === 'needs-payment-method',
-      dataSource: null, // filled below
-      accessStartsAt: Date.parse(access.startsAt || '') || null,
-      accessEndsAt: Date.parse(access.endsAt || '') || null,
-      monthlyLimit,
-      monthlyUsed,
-      monthlyRemaining: monthlyLimit != null && monthlyUsed != null ? Math.max(0, monthlyLimit - monthlyUsed) : null,
-      includedValueMultiple: plan.priceMonthly > 0 && monthlyLimit != null ? monthlyLimit / plan.priceMonthly : null,
-      workspaceName: null,
-      upgrade: statusDto.upgradePrice ? {
-        amount: usdFromMicroCents(statusDto.upgradePrice.amountMicroCents),
-        currency: String(statusDto.upgradePrice.currency || 'usd').toUpperCase(),
-      } : null,
-      teams: statusDto.teamsUpgradePrice ? {
-        amount: usdFromMicroCents(statusDto.teamsUpgradePrice.amountMicroCents),
-        currency: String(statusDto.teamsUpgradePrice.currency || 'usd').toUpperCase(),
-        memberCount: Number(statusDto.teamsUpgradePrice.memberCount) || null,
-      } : null,
-    }
-    if (subscription.cancelAtPeriodEnd) warnings.push('This Go plan is cancelled and will stop at the end of the current period.')
-    if (!subscription.useBalance) warnings.push('Extra usage is off: requests stop at the allowance instead of charging your balance.')
-  } else if (usageResult.ok) {
-    const monthly = usageResult.body.usage?.monthly
-    const monthlyLimit = plan.caps.monthly
-    const monthlyUsed = monthly ? (Number(monthly.percent) / 100) * monthlyLimit : null
-    subscription = {
-      source: 'usage',
-      product: plan.id,
-      renewalProduct: null,
-      plan: plan.name,
-      planId: plan.id,
-      priceMonthly: plan.priceMonthly,
-      currency: 'USD',
-      status: monthly?.status === 'rate-limited' ? 'limited' : 'active',
-      cancelAtPeriodEnd: null,
-      renewalStopReason: null,
-      renewalPending: null,
-      nextPeriodPaid: null,
-      useBalance: null,
-      accessStartsAt: monthly?.resetsAt ? (Date.parse(monthly.resetsAt) - 30 * DAY) : null,
-      accessEndsAt: monthly?.resetsAt ? Date.parse(monthly.resetsAt) : null,
-      monthlyLimit,
-      monthlyUsed,
-      monthlyRemaining: monthlyUsed != null ? Math.max(0, monthlyLimit - monthlyUsed) : null,
-      includedValueMultiple: plan.priceMonthly > 0 ? monthlyLimit / plan.priceMonthly : null,
-      workspaceName: null,
-      upgrade: null,
-    }
-    warnings.push('Console status was not found for this key, so renewal state and exact spend come from the percentage usage API.')
+function subscriptionFromUsage(usageDto, plan) {
+  const resetsAt = dateOrNull(usageDto?.usage?.monthly?.resetsAt)
+  return {
+    source: 'usage',
+    plan: plan.name,
+    priceMonthly: plan.priceMonthly,
+    currency: 'USD',
+    status: 'active',
+    cancelAtPeriodEnd: null,
+    renewalStopReason: null,
+    resumability: null,
+    nextPeriodPaid: null,
+    renewalPending: null,
+    useBalance: null,
+    needsPaymentMethod: false,
+    accessEndsAt: resetsAt,
+    upgrade: null,
+    teams: null,
   }
+}
 
-  const billingDto = (apiBillingResult?.ok ? apiBillingResult.body : null) || null
-  const billing = billingDto ? {
-    source: 'api-key',
-    mode: billingDto.mode || billingDto.billingMode || null,
-    balance: usdFromMicroCents(billingDto.balanceMicroCents),
-    available: usdFromMicroCents(billingDto.availableMicroCents),
-    creditLimit: usdFromMicroCents(billingDto.creditLimitMicroCents),
-    canPurchaseCredits: billingDto.canPurchaseCredits ?? null,
-    canEnableAutoRecharge: billingDto.canEnableAutoRecharge ?? null,
-  } : null
-  if (subscription && statusSource) subscription.dataSource = statusSource
-
-  const consoleEffective = statusSource === 'api-key'
-  if (statusResult && !statusResult.ok) {
-    const code = Number(statusResult.status) || 0
-    const hint = code === 401
-      ? ' — key invalid/expired, paste a fresh key below'
-      : code === 403
-        ? ' — key lacks Console permission (need Usage:Read; owner/admin → Restricted; member default is Models-only)'
-        : (statusResult.text ? ` — ${statusResult.text}` : '')
-    errors.push(`Console status: HTTP ${code || 'error'}${hint}`)
+function billingFrom(dto) {
+  if (!dto) return null
+  const mode = dto.mode || dto.billingMode
+  return {
+    mode: typeof mode === 'string' ? mode : null,
+    balance: usdFromMicroCents(dto.balanceMicroCents),
+    available: usdFromMicroCents(dto.availableMicroCents),
+    creditLimit: usdFromMicroCents(dto.creditLimitMicroCents),
+    canPurchaseCredits: typeof dto.canPurchaseCredits === 'boolean' ? dto.canPurchaseCredits : null,
+    canEnableAutoRecharge: typeof dto.canEnableAutoRecharge === 'boolean' ? dto.canEnableAutoRecharge : null,
   }
-  if (!usageResult.ok && savedKeys.length) {
-    errors.push(`Usage API: ${usageResult.error || 'unavailable'}`)
-  }
-  if (modelResult.authenticated && modelResult.data.length === 0) {
-    warnings.push('The authenticated model catalog returned no models; showing the public catalog instead.')
-  }
+}
 
-  const baseAllowance = baseAllowanceFor(plan.id)
-  const basePercent = monthMeter?.percent ?? null
-  const baseUsed = basePercent != null ? (basePercent / 100) * baseAllowance : null
-  const baseRemaining = baseUsed != null ? Math.max(0, baseAllowance - baseUsed) : null
-  const rawModels = modelResult.data
-  const models = normalizeModels(rawModels).map((model) => ({
-    ...model,
-    available: workspaceIds ? workspaceIds.has(model.id) : null,
-    ...modelAllowanceInfo(model, plan.id, baseAllowance, baseUsed, baseRemaining),
-  }))
-
-  let currentModelId = null
+function selectCurrentModel(ctx, config, models) {
+  let selected = null
   try {
     const selection = ctx.get?.('agentDefaultModel')?.currentSelection?.()
-    if (selection?.provider && config.providers.includes(String(selection.provider))) {
-      currentModelId = String(selection.model)
+    if (selection?.provider
+      && config.providers.includes(String(selection.provider))
+      && selection.model) {
+      selected = String(selection.model)
     }
   } catch {
     // The default-model service is optional.
   }
-  if (!currentModelId || !models.some((model) => model.id === currentModelId)) {
-    currentModelId = models.find((model) => !model.free)?.id || models[0]?.id || null
-  }
-  const currentModel = models.find((model) => model.id === currentModelId) || null
+  const match = (id) => models.find((model) => modelKey(model.id) === modelKey(id)) || null
+  return (selected ? match(selected) : null) || models.find((model) => !model.free) || models[0] || null
+}
 
-  const allowance = {
-    baseAllowance,
-    baseUsed,
-    baseRemaining,
-    basePercent,
-    currentModelId: currentModel?.id || null,
-    currentModelName: currentModel?.name || null,
-    currentModelAllowance: currentModel?.monthlyAllowance ?? null,
-    currentModelUnlimited: Boolean(currentModel?.unlimited),
-    currentModelBurnMultiplier: currentModel?.burnMultiplier ?? null,
-    currentModelRemainingIfExclusive: currentModel?.remainingIfExclusive ?? null,
-    published: Boolean(currentModel?.allowancePublished),
-  }
-
-  if (currentModel && !currentModel.allowancePublished) {
-    warnings.push(`No published monthly allowance is available for ${currentModel.name}.`)
-  }
-  if (models.length === 0) {
-    warnings.push('The model catalog is empty; per-model rates and allowances are unavailable.')
-  }
-
-  const keySource = usageResult.ok ? usageResult.candidate?.source : savedKeys[0]?.source
+function emptySnapshot(config) {
   return {
     ok: true,
-    version: 2,
+    version: 3,
     fetchedAt: Date.now(),
-    connected: Boolean(subscription || usageResult.ok),
+    refreshSeconds: config.refreshSeconds,
+    connected: false,
     auth: {
-      key: {
-        configured: savedKeys.length > 0,
-        source: keySource || null,
-        error: usageResult.ok ? null : (usageResult.error || null),
-      },
-      console: {
-        configured: consoleEffective,
-        via: statusSource || null,
-        source: statusSource === 'api-key' ? 'API key' : null,
-        workspaceName: null,
-      },
+      key: { configured: false },
+      console: { configured: false },
+    },
+    subscription: null,
+    billing: null,
+    meters: [],
+    currentModelId: null,
+    models: [],
+    warnings: [],
+    errors: [],
+  }
+}
+
+async function buildSnapshot(ctx, config) {
+  const stored = await readStoredKey(ctx)
+  if (!stored.key) return emptySnapshot(config)
+  const key = stored.key
+
+  const [consoleResult, billingResult, usageResult, publicModels, workspaceModels] = await Promise.all([
+    readConsoleStatus(config, key),
+    readBilling(config, key),
+    readUsage(config, key),
+    readModels(config, null),
+    readModels(config, key),
+  ])
+
+  const errors = []
+  const warnings = []
+  const statusDto = consoleResult.ok ? consoleResult.body : null
+  const plan = planFor(statusDto?.product || config.plan, config)
+  const meters = statusDto
+    ? statusMeters(statusDto)
+    : (usageResult.ok ? usageMeters(usageResult.body) : [])
+  const subscription = statusDto
+    ? subscriptionFromStatus(statusDto, plan)
+    : (usageResult.ok ? subscriptionFromUsage(usageResult.body, plan) : null)
+  const billing = billingFrom(billingResult.ok ? billingResult.body : null)
+
+  // Prefer the authenticated catalog: it lists the models this workspace can actually use.
+  const catalog = workspaceModels.data.length
+    ? workspaceModels
+    : (publicModels.data.length ? publicModels : { data: [], source: 'none' })
+  if (catalog.source === 'public') warnings.push({ code: 'models-public' })
+  if (catalog.data.length === 0) warnings.push({ code: 'catalog-empty' })
+
+  const models = normalizeModels(catalog.data)
+  const current = selectCurrentModel(ctx, config, models)
+
+  if (!consoleResult.ok) {
+    errors.push({ code: 'console', reason: consoleResult.reason, detail: consoleResult.detail })
+  }
+  if (!statusDto && !usageResult.ok) {
+    errors.push({ code: 'usage', reason: usageResult.reason, detail: usageResult.detail })
+  }
+
+  return {
+    ok: true,
+    version: 3,
+    fetchedAt: Date.now(),
+    refreshSeconds: config.refreshSeconds,
+    connected: true,
+    auth: {
+      key: { configured: true },
+      console: { configured: Boolean(statusDto) },
     },
     subscription,
     billing,
-    meters: meterList,
-    allowance,
-    currentModel,
+    meters,
+    currentModelId: current?.id ?? null,
     models,
-    modelScope: workspaceIds ? 'workspace' : 'catalog',
-    availableCount: workspaceIds ? workspaceIds.size : null,
-    warnings: [...new Set(warnings)],
-    errors: [...new Set(errors)],
+    warnings,
+    errors,
   }
 }
 
 export function createProvider(ctx, rawConfig = {}) {
   const config = configFor(rawConfig)
-  const refreshMs = Math.max(60, Number(config.refreshSeconds) || 300) * 1000
+  const cacheMs = config.refreshSeconds * 1000
   let cache = null
   let cacheUntil = 0
   let inflight = null
+  let inflightGeneration = 0
+  let generation = 0
+
+  /** A credential change invalidates every snapshot built before it. */
+  function invalidate() {
+    cache = null
+    cacheUntil = 0
+    generation += 1
+  }
 
   async function get(force = false) {
     if (!force && cache && Date.now() < cacheUntil) return cache
-    if (inflight) return inflight
-    inflight = buildSnapshot(ctx, config)
+    if (inflight && inflightGeneration === generation) return inflight
+    const buildGeneration = generation
+    const build = buildSnapshot(ctx, config)
       .then((snapshot) => {
-        cache = snapshot
-        cacheUntil = Date.now() + refreshMs
+        if (buildGeneration === generation) {
+          cache = snapshot
+          cacheUntil = Date.now() + cacheMs
+        }
         return snapshot
       })
       .finally(() => {
-        inflight = null
+        if (inflight === build) inflight = null
       })
-    return inflight
+    inflight = build
+    inflightGeneration = buildGeneration
+    return build
   }
 
+  /** Verify, then store, a key. A rejected key never replaces a working one. */
   async function connect(apiKey) {
-    const value = String(apiKey || '').trim()
-    if (value.length < 20) throw new Error('That does not look like an OpenCode API key.')
+    const value = String(apiKey ?? '').trim()
+    if (value.length < 20 || /\s/.test(value)) {
+      throw new PanelApiError('INVALID_KEY_FORMAT', 400)
+    }
+    const probe = await probeKey(config, value)
+    if (!probe.ok) throw new PanelApiError('KEY_REJECTED', 400, probe.detail)
     const credentials = ctx.get?.('credentials')
-    let stored = false
-    if (credentials?.set) {
-      try {
-        await credentials.set(PANEL_CREDENTIAL, value)
-        stored = true
-      } catch {
-        // Fall through to the panel's private file when no writable store exists.
-      }
+    if (!credentials?.modifyRecord) throw new PanelApiError('STORE_UNAVAILABLE', 500)
+    try {
+      await credentials.modifyRecord(CREDENTIAL_RECORD, async () => ({ kind: 'api-key', key: value }))
+    } catch (error) {
+      throw new PanelApiError('STORE_UNAVAILABLE', 500, errorMessage(error))
     }
-    if (!stored) {
-      const dir = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'opencode-go')
-      await mkdir(dir, { recursive: true, mode: 0o700 })
-      await writeFile(join(dir, 'api-key'), `${value}\n`, { encoding: 'utf8', mode: 0o600 })
-    }
-    cache = null
-    cacheUntil = 0
+    invalidate()
     return get(true)
   }
 
-  return { get, connect }
+  /** Remove the stored key; the panel returns to its connect state. */
+  async function disconnect() {
+    const credentials = ctx.get?.('credentials')
+    if (!credentials?.deleteRecord) throw new PanelApiError('STORE_UNAVAILABLE', 500)
+    try {
+      await credentials.deleteRecord(CREDENTIAL_RECORD)
+    } catch (error) {
+      throw new PanelApiError('STORE_UNAVAILABLE', 500, errorMessage(error))
+    }
+    invalidate()
+    return get(true)
+  }
+
+  return { get, connect, disconnect }
 }

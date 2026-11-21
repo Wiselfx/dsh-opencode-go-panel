@@ -1,3 +1,7 @@
+/**
+ * Browser half of the OpenCode Go panel: the sidebar entry and the panel page.
+ * It renders the Host's snapshot only; the API key never reaches this bundle.
+ */
 window.__ModuleLoader__.load({
   id: 'dsh-opencode-go-panel',
   factory(require) {
@@ -8,249 +12,266 @@ window.__ModuleLoader__.load({
     const NS = 'opencode-go'
     const PANEL_ID = 'opencode-go'
     const API = '/_dsh/opencode-go'
+    const CONSOLE_URL = 'https://opencode.ai/console/go'
+    const WINDOW_KEYS = { rolling: 'windowRolling', weekly: 'windowWeekly', monthly: 'windowMonthly' }
+    const ERROR_KEYS = {
+      INVALID_KEY_FORMAT: 'keyFormat',
+      KEY_REJECTED: 'keyRejected',
+      STORE_UNAVAILABLE: 'storeUnavailable',
+    }
 
     const dicts = {
       en: {
         panel: 'OpenCode Go',
-        eyebrow: 'OpenCode Go',
-        title: 'Subscription overview',
-        subtitle: 'Exact Console dollars via API key, windows, burn rates, and published per-M rates.',
+        title: 'OpenCode Go',
+        subtitle: 'Subscription, allowance, usage windows, and each model’s published rates.',
         refresh: 'Refresh',
         refreshing: 'Refreshing…',
         openConsole: 'Open console',
         updated: 'Updated {time}',
         connectTitle: 'Connect your OpenCode Go key',
-        connectBody: 'Needs a read-only API key from OpenCode Go (Console → Go → API keys, Usage:Read is enough). It is stored securely and used directly for exact Console dollars.',
-        connectPlaceholder: 'oc_…',
+        connectBody: 'Paste a read-only API key from OpenCode Console → Go → API keys. The panel keeps it in the Harness credential store and reads OpenCode from the Host; the key never reaches this page.',
+        connectPlaceholder: 'Paste your OpenCode Go API key',
         connectAction: 'Save and connect',
-        connecting: 'Connecting…',
-        connectHint: 'Copy a key from the OpenCode Console under Go → API keys.',
-        keyConnected: 'API key connected',
-        consoleLinked: 'Console linked',
-        noConsole: 'Showing percentage usage',
-        cancelBanner: 'This plan is cancelled and access ends {date}.',
-        extraUsageOff: 'Extra usage is off: requests stop at the allowance instead of charging your balance.',
-        apiKeyRejected: 'The API key was rejected. Save a fresh key to restore usage.',
-        retry: 'Try again',
-        loadFailed: 'The panel could not load OpenCode Go data.',
+        connecting: 'Verifying…',
+        connectHint: 'A key with Usage:Read can read the Console. A Models-only key still shows percentage usage.',
+        exact: 'Exact',
+        percentageOnly: 'Percentage only',
+        keySaved: 'Key saved',
+        exactHint: 'Dollar amounts come from the Console status API.',
+        percentageOnlyHint: 'Dollar amounts are unavailable because the Console status could not be read.',
+        peakHint: 'Peak-hour prices use this multiplier.',
+        keySection: 'API key',
+        keySectionSaved: 'A key is stored in the Harness credential store.',
+        keySectionMissing: 'No key is stored yet.',
+        keyStoredHint: 'Stored as this panel’s own credential record (dsh-opencode-go-panel/api-key); only the Host sends it to OpenCode.',
+        newKeyPlaceholder: 'Paste a new key to replace the stored one',
+        saveKey: 'Save key',
+        replaceKey: 'Replace key',
+        saving: 'Saving…',
+        removeKey: 'Remove key',
+        confirmRemove: 'Remove the saved key?',
+        removeKeyHint: 'The panel returns to its connect screen; usage data stays in OpenCode.',
+        removing: 'Removing…',
+        cancel: 'Cancel',
+        keyRejected: 'OpenCode rejected that key. Check that it belongs to your Go workspace and can read usage.',
+        keyFormat: 'That does not look like an API key.',
+        storeUnavailable: 'The Harness credential store is unavailable, so the key cannot be saved.',
         plan: 'Plan',
-        thisPeriod: 'This period',
-        observedTokens: 'Observed tokens',
-        effectiveRate: 'Effective rate',
-        ofAllowance: 'of {limit} this period',
-        observedFrom: 'from Harness + local OpenCode',
-        perMillion: '{price} / 1M tokens',
-        planFormula: '{price} plan ÷ {tokens} tokens',
-        meterFiveHour: '5-hour window',
-        meterWeekly: 'Weekly',
-        meterMonthly: 'Monthly',
-        usedOf: '{used} used of {limit}',
-        remaining: '{amount} left',
-        resetsIn: 'Resets in {time}',
-        resetNow: 'Resets now',
-        pace: '{pace}× pace',
-        paceTitle: '1.00× would use exactly the full allowance by reset.',
+        perMonth: '/ month',
+        currentModel: 'Current model',
+        active: 'Active',
+        cancelling: 'Cancelling',
+        unknown: 'Unknown',
+        endsOn: 'Ends {date}',
+        renewsOn: 'Renews {date}',
+        usageWindows: 'Usage windows',
+        usageWindowsSub: 'The 5-hour window rolls; unused allowance does not carry over.',
+        windowRolling: '5-hour window',
+        windowWeekly: 'Weekly',
+        windowMonthly: 'Monthly',
+        pace: '{value}× pace',
+        paceNone: 'No pace yet',
+        paceHint: '1.00× would use exactly the whole allowance by reset.',
         rateLimited: 'Rate limited',
-        tokenTitle: 'Token usage',
-        tokenSubtitle: 'Observed in this billing period',
-        total: 'Total',
-        input: 'Input',
-        output: 'Output',
-        reasoning: 'Reasoning',
-        cacheRead: 'Cache read',
-        cacheWrite: 'Cache write',
-        requests: '{count} requests',
-        harness: 'Harness',
-        opencodeCli: 'OpenCode CLI',
-        noTokens: 'No OpenCode Go tokens were observed this period. Run a request with an OpenCode Go model, then refresh.',
-        tokenNote: 'Reasoning is counted separately by the provider. Cache read is derived when only a total is available.',
-        costTitle: 'Cost per million tokens',
-        costSubtitle: 'What you pay overall, and what each model costs at your token mix',
-        effectiveSubscription: 'Effective subscription rate',
-        meteredRate: 'Metered value rate',
-        listRate: 'List-value rate',
-        formulaPlan: '{price} plan ÷ {tokens} observed tokens',
-        formulaMeter: '{spend} metered ÷ {tokens} observed tokens',
-        formulaList: '{cost} list value ÷ {tokens} observed tokens',
-        includedValue: 'Included value',
-        includedValueSub: '{limit} allowance · {multiple}× the plan price',
-        modelCostTitle: 'Your models',
-        modelCostSubtitle: 'Published rates, your token mix, and estimated list value',
-        model: 'Model',
-        tokens: 'Tokens',
-        share: 'Share',
+        resetsIn: 'Resets in {time}',
+        resetsNow: 'Resets now',
+        resetsUnknown: 'Reset time unavailable',
+        usedOf: '{used} of {limit} used',
+        left: 'left',
+        ofLimit: 'of {limit}',
+        ofPool: 'of the API pool',
+        models: 'Models',
+        modelColumn: 'Model',
+        modelsSub: '{count} models with published rates',
+        searchModels: 'Search models',
+        current: 'Current',
         inputRate: 'In $/M',
         outputRate: 'Out $/M',
         cacheRate: 'Cache $/M',
-        blend: 'Your blend $/M',
-        estValue: 'Est. value',
+        ratesLine: '{input} in · {output} out · {cache} cache per 1M',
+        context: 'Context',
+        maxOut: 'Max out',
         free: 'Free',
-        noModelUsage: 'No model-level token usage observed this period.',
-        modelNote: '“Your blend” applies the observed input/output/cache mix for that model to its published per-million rates. “Est. value” is what those tokens would cost at list price, not your subscription charge.',
-        accountTitle: 'Allowances and account',
-        allowanceTitle: 'Allowance',
-        accountCardTitle: 'Subscription',
-        fiveHourCap: '5-hour cap',
-        weeklyCap: 'Weekly cap',
-        monthlyCap: 'Monthly cap',
-        valueMultiple: 'Included value multiple',
-        extraUsage: 'Extra usage',
+        peak: '{factor}× peak',
+        noModels: 'OpenCode returned no models.',
+        noModelsMatch: 'No model matches that search.',
+        modelsNote: 'Rates come from the OpenCode model catalog. OpenCode reports one blended allowance, not per-model spend or token totals.',
+        account: 'Account',
+        accountSub: 'Subscription details and billing.',
+        subscription: 'Subscription details',
+        billing: 'Billing',
+        extraUsageRow: 'Extra usage',
+        moreDetails: 'More details',
+        cancelReason: 'Cancellation reason',
+        resumability: 'Resumability',
+        nextPeriodPaid: 'Next period paid',
+        renewalPending: 'Renewal pending',
+        teams: 'Teams upgrade',
+        upgrade: 'Upgrade price',
+        members: '{count} members',
+        balance: 'Balance',
+        available: 'Available',
+        creditLimit: 'Credit limit',
+        billingMode: 'Mode',
+        autoRecharge: 'Auto-recharge',
+        canPurchase: 'Can purchase credits',
+        billingUnavailable: 'Billing data is unavailable for this key.',
+        yes: 'Yes',
+        no: 'No',
         on: 'On',
         off: 'Off',
-        workspace: 'Workspace',
-        currentPeriod: 'Current period',
-        renews: 'Renews',
-        ends: 'Ends',
-        status: 'Status',
-        active: 'Active',
-        cancelling: 'Cancelling',
-        upgrade: 'Upgrade',
-        unknown: 'Unknown',
-        noSubscription: 'Console details are unavailable. Percentage usage and the model catalog still work.',
-        catalogTitle: 'Model catalog',
-        catalogSubtitle: '{count} Go models and their published rates',
-        showCatalog: 'Browse catalog',
-        hideCatalog: 'Hide catalog',
-        searchModels: 'Search models…',
-        context: 'Context',
-        maxOutput: 'Max out',
-        tags: 'Tags',
-        peak: '{factor}× peak',
-        vision: 'Vision',
-        reasoningTag: 'Reasoning',
-        notesTitle: 'Notes and data sources',
-        notesCalc: 'How these numbers are calculated',
-        note1: 'Subscription, renewal, and exact dollar meters come from the Console status API with your saved API key.',
-        note2: 'OpenCode reports dollars and percentages, not token counts. Nothing is read from local logs or databases.',
-        note3: 'Your effective rate uses the plan price. The metered rate uses month-to-date Console spend. The list-value rate uses current model prices and your observed token mix.',
-        note4: 'The 5-hour window is rolling. Weekly resets on Monday 00:00 UTC. Unused allowance does not roll over.',
-        note5: 'Free models do not consume paid allowance. DeepSeek models have peak-hour multipliers; per-model rates in the catalog show the base price.',
-        showDetails: 'Show details',
-        hideDetails: 'Hide details',
-        warnings: 'Warnings',
-        errors: 'Errors',
-        footer: 'OpenCode Go panel · data refreshed on demand',
+        noSubscription: 'Console details are unavailable. The model catalog and percentage usage still work.',
+        noDetails: 'No further subscription details.',
+        notes: 'About these numbers',
+        noteSource: 'Exact dollars, renewal state, and billing come from the Console status API with your saved key. When it cannot be read, the inference usage API supplies percentage-only windows and values are marked estimated.',
+        noteWindows: 'The 5-hour window is rolling, and the weekly window resets Monday 00:00 UTC. Unused allowance does not roll over.',
+        noteAllowance: 'OpenCode exposes a single blended allowance and no per-model spend or token totals, so the panel shows only the dollars and percentages OpenCode returns.',
+        noteKey: 'The key is used only by the Host; it never reaches this page or a response body.',
+        retry: 'Try again',
+        loadFailed: 'The panel could not load OpenCode Go data.',
+        errorConsole: 'Console status could not be read{detail}',
+        hintInvalidKey: 'The key looks invalid or expired. Save a fresh key.',
+        hintForbidden: 'The key cannot read the Console; Usage:Read access is required.',
+        hintNetwork: 'OpenCode could not be reached.',
+        hintNoSubscription: 'This key does not have an active Go subscription.',
+        errorUsage: 'Usage API could not be read{detail}',
+        warnUsageFallback: 'Console status is unavailable, so the windows below are estimated from percentage usage.',
+        warnExtraUsageOff: 'Extra usage is off: requests stop at the allowance instead of charging your balance.',
+        warnCancelled: 'This plan is cancelled and access ends {date}.',
+        warnNeedsPayment: 'This subscription needs a payment method to resume.',
+        warnRateLimited: '{window} is rate limited.',
+        warnModelsPublic: 'The workspace model list could not be read, so the public catalog is shown.',
+        warnCatalogEmpty: 'OpenCode returned no models, so per-model rates are unavailable.',
+        unknownError: 'Something went wrong.',
+        sessionExpired: 'The page is no longer authorized. Reload and try again.',
+        footerRefresh: 'Refreshes every {minutes} min',
       },
       zh: {
         panel: 'OpenCode Go',
-        eyebrow: 'OpenCode Go',
-        title: '订阅总览',
-        subtitle: '配额、用量、模型，以及你的 Token 实际成本。',
+        title: 'OpenCode Go',
+        subtitle: '订阅、配额、用量窗口，以及各模型的公开费率。',
         refresh: '刷新',
         refreshing: '刷新中…',
         openConsole: '打开控制台',
         updated: '更新于 {time}',
         connectTitle: '连接 OpenCode Go 密钥',
-        connectBody: '需要 OpenCode Go 的只读 API 密钥（控制台 → Go → API 密钥，有 Usage:Read 权限即可）。密钥会被安全存储，直接用于获取精确的 Console 美元用量，不会显示在此页面。',
-        connectPlaceholder: 'oc_…',
+        connectBody: '粘贴 OpenCode 控制台 → Go → API 密钥中的只读密钥。面板会把它保存在 Harness 凭据存储中，并由 Host 端读取 OpenCode；密钥不会发送到此页面。',
+        connectPlaceholder: '粘贴 OpenCode Go API 密钥',
         connectAction: '保存并连接',
-        connecting: '连接中…',
-        connectHint: '在 OpenCode 控制台的 Go → API 密钥中复制密钥。',
-        keyConnected: 'API 密钥已连接',
-        consoleLinked: '控制台已关联',
-        noConsole: '显示百分比用量',
-        cancelBanner: '此套餐已取消，访问将在 {date} 结束。',
-        extraUsageOff: '额外用量已关闭：达到配额后请求会停止，而不是从余额扣费。',
-        apiKeyRejected: 'API 密钥被拒绝。请保存新密钥以恢复用量。',
-        retry: '重试',
-        loadFailed: '无法加载 OpenCode Go 数据。',
+        connecting: '验证中…',
+        connectHint: '具有 Usage:Read 权限的密钥可读取控制台；仅有 Models 权限的密钥仍可显示百分比用量。',
+        exact: '精确',
+        percentageOnly: '仅百分比',
+        keySaved: '密钥已保存',
+        exactHint: '美元金额来自控制台状态 API。',
+        percentageOnlyHint: '无法读取控制台状态，因此没有美元金额。',
+        peakHint: '高峰时段价格按此倍率计算。',
+        keySection: 'API 密钥',
+        keySectionSaved: '密钥已保存在 Harness 凭据存储中。',
+        keySectionMissing: '尚未保存密钥。',
+        keyStoredHint: '密钥作为本面板自己的凭据记录（dsh-opencode-go-panel/api-key）保存，仅由 Host 发送给 OpenCode。',
+        newKeyPlaceholder: '粘贴新密钥以替换已保存的密钥',
+        saveKey: '保存密钥',
+        replaceKey: '替换密钥',
+        saving: '保存中…',
+        removeKey: '移除密钥',
+        confirmRemove: '移除已保存的密钥？',
+        removeKeyHint: '面板会回到连接页；用量数据仍保留在 OpenCode 中。',
+        removing: '移除中…',
+        cancel: '取消',
+        keyRejected: 'OpenCode 拒绝了该密钥。请确认它属于你的 Go 工作区且可以读取用量。',
+        keyFormat: '这不像一个 API 密钥。',
+        storeUnavailable: 'Harness 凭据存储不可用，无法保存密钥。',
         plan: '套餐',
-        thisPeriod: '本周期',
-        observedTokens: '观测 Token',
-        effectiveRate: '实际费率',
-        ofAllowance: '本周期共 {limit}',
-        observedFrom: '来自 Harness + 本地 OpenCode',
-        perMillion: '{price} / 百万 Token',
-        planFormula: '{price} 套餐 ÷ {tokens} Token',
-        meterFiveHour: '5 小时窗口',
-        meterWeekly: '每周',
-        meterMonthly: '每月',
-        usedOf: '已用 {used} / {limit}',
-        remaining: '剩余 {amount}',
-        resetsIn: '{time} 后重置',
-        resetNow: '即将重置',
-        pace: '{pace}× 速度',
-        paceTitle: '1.00× 表示到重置时刚好用完配额。',
+        perMonth: '/ 月',
+        currentModel: '当前模型',
+        active: '生效中',
+        cancelling: '取消中',
+        unknown: '未知',
+        endsOn: '{date} 结束',
+        renewsOn: '{date} 续费',
+        usageWindows: '用量窗口',
+        usageWindowsSub: '5 小时窗口为滚动窗口；未使用的配额不结转。',
+        windowRolling: '5 小时窗口',
+        windowWeekly: '每周',
+        windowMonthly: '每月',
+        pace: '{value}× 速度',
+        paceNone: '暂无速度',
+        paceHint: '1.00× 表示到重置时刚好用完配额。',
         rateLimited: '已限流',
-        tokenTitle: 'Token 用量',
-        tokenSubtitle: '本计费周期内观测',
-        total: '总计',
-        input: '输入',
-        output: '输出',
-        reasoning: '推理',
-        cacheRead: '缓存读取',
-        cacheWrite: '缓存写入',
-        requests: '{count} 次请求',
-        harness: 'Harness',
-        opencodeCli: 'OpenCode CLI',
-        noTokens: '本周期未观测到 OpenCode Go Token。使用 OpenCode Go 模型发起请求后刷新。',
-        tokenNote: '推理 Token 由服务商单独计数。仅有总量时，缓存读取为推算值。',
-        costTitle: '每百万 Token 成本',
-        costSubtitle: '整体实际成本，以及各模型在你的 Token 结构下的成本',
-        effectiveSubscription: '订阅实际费率',
-        meteredRate: '计量价值费率',
-        listRate: '标价费率',
-        formulaPlan: '{price} 套餐 ÷ {tokens} 观测 Token',
-        formulaMeter: '{spend} 计量 ÷ {tokens} 观测 Token',
-        formulaList: '{cost} 标价 ÷ {tokens} 观测 Token',
-        includedValue: '包含价值',
-        includedValueSub: '{limit} 配额 · 套餐价的 {multiple}×',
-        modelCostTitle: '你的模型',
-        modelCostSubtitle: '公开费率、你的 Token 结构，以及估算标价',
-        model: '模型',
-        tokens: 'Token',
-        share: '占比',
+        resetsIn: '{time} 后重置',
+        resetsNow: '即将重置',
+        resetsUnknown: '重置时间不可用',
+        usedOf: '已用 {used} / {limit}',
+        left: '剩余',
+        ofLimit: '共 {limit}',
+        ofPool: '占 API 池',
+        models: '模型',
+        modelColumn: '模型',
+        modelsSub: '{count} 个模型，含公开费率',
+        searchModels: '搜索模型',
+        current: '当前',
         inputRate: '输入 $/M',
         outputRate: '输出 $/M',
         cacheRate: '缓存 $/M',
-        blend: '你的混合 $/M',
-        estValue: '估算价值',
+        ratesLine: '{input} 输入 · {output} 输出 · {cache} 缓存 / 百万 Token',
+        context: '上下文',
+        maxOut: '最大输出',
         free: '免费',
-        noModelUsage: '本周期未观测到按模型划分的 Token 用量。',
-        modelNote: '“你的混合”把该模型观测到的输入/输出/缓存结构应用到公开的每百万 Token 费率。“估算价值”是按标价计算的费用，不是你的订阅扣费。',
-        accountTitle: '配额与账户',
-        allowanceTitle: '配额',
-        accountCardTitle: '订阅',
-        fiveHourCap: '5 小时上限',
-        weeklyCap: '每周上限',
-        monthlyCap: '每月上限',
-        valueMultiple: '包含价值倍数',
-        extraUsage: '额外用量',
+        peak: '{factor}× 高峰',
+        noModels: 'OpenCode 未返回模型。',
+        noModelsMatch: '没有匹配该搜索的模型。',
+        modelsNote: '费率来自 OpenCode 模型目录。OpenCode 只提供一个混合配额，不提供按模型支出或 Token 总量。',
+        account: '账户',
+        accountSub: '订阅详情与账单。',
+        subscription: '订阅详情',
+        billing: '账单',
+        extraUsageRow: '额外用量',
+        moreDetails: '更多详情',
+        cancelReason: '取消原因',
+        resumability: '恢复条件',
+        nextPeriodPaid: '下期已付款',
+        renewalPending: '续费待处理',
+        teams: '团队升级',
+        upgrade: '升级价格',
+        members: '{count} 名成员',
+        balance: '余额',
+        available: '可用',
+        creditLimit: '信用额度',
+        billingMode: '模式',
+        autoRecharge: '自动充值',
+        canPurchase: '可购买额度',
+        billingUnavailable: '该密钥没有账单数据。',
+        yes: '是',
+        no: '否',
         on: '开启',
         off: '关闭',
-        workspace: '工作区',
-        currentPeriod: '当前周期',
-        renews: '续费',
-        ends: '结束',
-        status: '状态',
-        active: '生效中',
-        cancelling: '取消中',
-        upgrade: '升级',
-        unknown: '未知',
-        noSubscription: '控制台详情不可用。百分比用量和模型目录仍可使用。',
-        catalogTitle: '模型目录',
-        catalogSubtitle: '{count} 个 Go 模型及其公开费率',
-        showCatalog: '浏览目录',
-        hideCatalog: '收起目录',
-        searchModels: '搜索模型…',
-        context: '上下文',
-        maxOutput: '最大输出',
-        tags: '标签',
-        peak: '{factor}× 高峰',
-        vision: '视觉',
-        reasoningTag: '推理',
-        notesTitle: '说明与数据来源',
-        notesCalc: '这些数字如何计算',
-        note1: '订阅、续费状态和精确美元计量来自控制台状态 API，使用你保存的 API 密钥。',
-        note2: 'OpenCode 只提供美元和百分比，不提供 Token 数。Token 总量从 Harness 会话日志和本地 OpenCode 数据库观测，因此其他机器或客户端的用量不包含在内。',
-        note3: '实际费率使用套餐价格。计量费率使用控制台本月支出。标价费率使用当前模型价格和你的 Token 结构。',
-        note4: '5 小时窗口是滚动的。每周一 00:00 UTC 重置。未使用的配额不会结转。',
-        note5: '免费模型不消耗付费配额。DeepSeek 模型有高峰时段倍率；目录中的模型费率显示基础价格。',
-        showDetails: '显示详情',
-        hideDetails: '收起详情',
-        warnings: '警告',
-        errors: '错误',
-        footer: 'OpenCode Go 面板 · 按需刷新数据',
+        noSubscription: '控制台详情不可用。模型目录和百分比用量仍可使用。',
+        noDetails: '没有更多订阅详情。',
+        notes: '关于这些数字',
+        noteSource: '精确美元、续费状态和账单来自控制台状态 API，使用你保存的密钥。若无法读取，则改用推理用量 API 的百分比窗口，并标记为估算。',
+        noteWindows: '5 小时窗口为滚动窗口，每周重置时间为周一 00:00 UTC。未使用的配额不结转。',
+        noteAllowance: 'OpenCode 只提供一个混合配额，不提供按模型的支出或 Token 总量，因此面板只显示 OpenCode 返回的美元和百分比。',
+        noteKey: '密钥仅由 Host 使用，不会发送到本页面，也不会出现在响应中。',
+        retry: '重试',
+        loadFailed: '面板无法加载 OpenCode Go 数据。',
+        errorConsole: '无法读取控制台状态{detail}',
+        hintInvalidKey: '密钥无效或已过期，请保存新密钥。',
+        hintForbidden: '该密钥无法读取控制台，需要 Usage:Read 权限。',
+        hintNetwork: '无法连接 OpenCode。',
+        hintNoSubscription: '该密钥没有生效中的 Go 订阅。',
+        errorUsage: '无法读取用量 API{detail}',
+        warnUsageFallback: '控制台状态不可用，下方窗口根据百分比用量估算。',
+        warnExtraUsageOff: '额外用量已关闭：达到配额后请求会停止，而不是从余额扣费。',
+        warnCancelled: '此套餐已取消，访问将在 {date} 结束。',
+        warnNeedsPayment: '此订阅需要支付方式才能恢复。',
+        warnRateLimited: '{window} 已限流。',
+        warnModelsPublic: '无法读取工作区模型列表，已显示公开目录。',
+        warnCatalogEmpty: 'OpenCode 未返回模型，无法显示按模型费率。',
+        unknownError: '出现未知错误。',
+        sessionExpired: '页面已失去授权，请刷新后重试。',
+        footerRefresh: '每 {minutes} 分钟刷新一次',
       },
     }
 
@@ -264,123 +285,190 @@ window.__ModuleLoader__.load({
       font-size: 13px;
       line-height: 1.45;
     }
-    .ocgo-shell { max-width: 1060px; margin: 0 auto; padding: 30px 32px 72px; }
-    .ocgo-head { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; margin-bottom: 24px; }
-    .ocgo-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--dsw-alias-label-secondary); }
-    .ocgo-title { margin: 6px 0 4px; font-size: 27px; line-height: 1.15; font-weight: 650; letter-spacing: -.025em; }
-    .ocgo-sub { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 13px; max-width: 560px; }
+    .ocgo-shell {
+      box-sizing: border-box;
+      width: 100%;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 28px clamp(24px, 4vw, 48px) 64px;
+    }
+    @media (max-width: 767px) {
+      .ocgo-shell { padding: 20px 20px 48px; }
+    }
+    .ocgo-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .ocgo-title { margin: 0; font-size: 20px; line-height: 28px; font-weight: 500; }
+    .ocgo-sub { margin: 4px 0 0; max-width: 560px; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
     .ocgo-head-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
-    .ocgo-updated { color: var(--dsw-alias-label-secondary); font-size: 11px; white-space: nowrap; }
+    .ocgo-updated { font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
     .ocgo-btn {
-      display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      height: 28px; padding: 0 10px; box-sizing: border-box;
+      border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-sm);
+      background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary);
+      font: inherit; font-size: 12px; line-height: 18px; white-space: nowrap; text-decoration: none; cursor: pointer;
+    }
+    .ocgo-btn:active:not(:disabled) { background: var(--dsw-alias-interactive-bg-active); }
+    @media (hover: hover) {
+      .ocgo-btn:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+    }
+    .ocgo-btn:disabled { opacity: .5; cursor: default; }
+    .ocgo-btn:focus-visible,
+    .ocgo-input:focus-visible,
+    .ocgo-notes summary:focus-visible,
+    .ocgo-details summary:focus-visible {
+      outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+      outline-offset: 1px;
+    }
+    .ocgo-btn-primary {
+      border-color: transparent;
+      background: var(--dsw-alias-button-primary-fill);
+      color: var(--dsw-alias-label-primary-foreground);
+    }
+    @media (hover: hover) {
+      .ocgo-btn-primary:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }
+    }
+    .ocgo-btn-ghost { border-color: transparent; background: transparent; }
+    .ocgo-btn-danger { color: var(--dsw-alias-state-error-primary); }
+    .ocgo-link { color: var(--dsw-alias-brand-primary); text-decoration: none; }
+    @media (hover: hover) {
+      .ocgo-link:hover { text-decoration: underline; }
+    }
+    .ocgo-alerts { display: grid; gap: 8px; margin-top: 16px; }
+    .ocgo-alert {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 9px 12px; border-radius: var(--dsw-radius-md);
       border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1);
-      color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; cursor: pointer;
-      text-decoration: none; white-space: nowrap;
+      font-size: 12.5px; line-height: 18px; color: var(--dsw-alias-label-secondary);
     }
-    .ocgo-btn:hover { border-color: var(--dsw-alias-border-l2); }
-    .ocgo-btn:disabled { opacity: .55; cursor: default; }
-    .ocgo-btn-primary { background: var(--dsw-alias-brand-primary); border-color: transparent; color: var(--dsw-alias-bg-base); }
-    .ocgo-btn-primary:hover { filter: brightness(1.05); }
-    .ocgo-btn-ghost { background: transparent; }
-    .ocgo-banner {
-      display: flex; gap: 10px; align-items: flex-start; padding: 11px 13px; border-radius: 10px;
-      border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1);
-      color: var(--dsw-alias-label-secondary); margin-bottom: 12px; font-size: 12px;
+    .ocgo-alert-warn {
+      border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 40%, var(--dsw-alias-border-l1));
+      background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 8%, var(--dsw-alias-bg-layer-1));
     }
-    .ocgo-banner strong { color: var(--dsw-alias-label-primary); font-weight: 600; }
-    .ocgo-banner-warn { border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 45%, var(--dsw-alias-border-l1)); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 9%, var(--dsw-alias-bg-layer-1)); }
-    .ocgo-banner-error { border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, var(--dsw-alias-border-l1)); background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, var(--dsw-alias-bg-layer-1)); }
-    .ocgo-banner-info { border-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 30%, var(--dsw-alias-border-l1)); background: color-mix(in srgb, var(--dsw-alias-brand-primary) 6%, var(--dsw-alias-bg-layer-1)); }
-    .ocgo-hero { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr; gap: 12px; }
-    .ocgo-card {
-      border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px;
-      background: var(--dsw-alias-bg-layer-1); padding: 16px;
+    .ocgo-alert-error {
+      border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 40%, var(--dsw-alias-border-l1));
+      background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 7%, var(--dsw-alias-bg-layer-1));
     }
-    .ocgo-stat-label { color: var(--dsw-alias-label-secondary); font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
-    .ocgo-stat-value { margin-top: 8px; font-size: 25px; line-height: 1.1; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-    .ocgo-stat-sub { margin-top: 6px; color: var(--dsw-alias-label-secondary); font-size: 11.5px; line-height: 1.35; }
-    .ocgo-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--dsw-alias-border-l1); font-size: 10.5px; font-weight: 600; line-height: 1.65; white-space: nowrap; }
-    .ocgo-pill-ok { color: var(--dsw-alias-state-success-primary); border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 40%, var(--dsw-alias-border-l1)); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 8%, transparent); }
-    .ocgo-pill-warn { color: var(--dsw-alias-state-warn-primary); border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 40%, var(--dsw-alias-border-l1)); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 9%, transparent); }
-    .ocgo-pill-error { color: var(--dsw-alias-state-error-primary); border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 40%, var(--dsw-alias-border-l1)); background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent); }
+    .ocgo-alert-icon { display: inline-flex; flex: none; margin-top: 2px; }
+    .ocgo-alert-warn .ocgo-alert-icon { color: var(--dsw-alias-state-warn-primary); }
+    .ocgo-alert-error .ocgo-alert-icon { color: var(--dsw-alias-state-error-primary); }
+    .ocgo-alert-body { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+    .ocgo-alert-text { margin: 0; flex: 1 1 240px; }
+    .ocgo-pill {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 1px 8px; border-radius: 999px; border: 1px solid var(--dsw-alias-border-l1);
+      font-size: 11px; font-weight: 500; line-height: 16px; white-space: nowrap;
+    }
+    .ocgo-pill-ok { color: var(--dsw-alias-state-success-primary); border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 35%, var(--dsw-alias-border-l1)); background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 7%, transparent); }
+    .ocgo-pill-warn { color: var(--dsw-alias-state-warn-primary); border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 35%, var(--dsw-alias-border-l1)); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 8%, transparent); }
+    .ocgo-pill-error { color: var(--dsw-alias-state-error-primary); border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 35%, var(--dsw-alias-border-l1)); background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 7%, transparent); }
     .ocgo-pill-idle { color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-layer-2); }
-    .ocgo-progress { height: 6px; border-radius: 999px; background: var(--dsw-alias-bg-layer-2); overflow: hidden; margin-top: 11px; }
-    .ocgo-progress > span { display: block; height: 100%; border-radius: inherit; transition: width .35s ease; }
-    .ocgo-meter-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
-    .ocgo-meter-label { font-weight: 600; font-size: 12.5px; }
-    .ocgo-meter-value { margin-top: 12px; display: flex; align-items: baseline; gap: 8px; }
-    .ocgo-meter-percent { font-size: 30px; line-height: 1; font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
-    .ocgo-meter-of { color: var(--dsw-alias-label-secondary); font-size: 11.5px; }
-    .ocgo-meter-rows { display: grid; gap: 3px; margin-top: 10px; color: var(--dsw-alias-label-secondary); font-size: 11.5px; }
-    .ocgo-meter-foot { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); font-size: 11px; }
-    .ocgo-section { margin-top: 30px; }
-    .ocgo-section-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; margin-bottom: 10px; }
-    .ocgo-section-title { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
-    .ocgo-section-sub { margin: 3px 0 0; color: var(--dsw-alias-label-secondary); font-size: 11.5px; }
-    .ocgo-muted { color: var(--dsw-alias-label-secondary); }
-    .ocgo-token-grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 12px; }
-    .ocgo-token-total { font-size: 34px; line-height: 1; font-weight: 650; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
-    .ocgo-token-caption { color: var(--dsw-alias-label-secondary); font-size: 11.5px; margin-top: 7px; }
-    .ocgo-stack { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--dsw-alias-bg-layer-2); margin-top: 16px; }
-    .ocgo-stack > span { display: block; height: 100%; min-width: 0; }
-    .ocgo-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; }
-    .ocgo-legend-item { display: inline-flex; align-items: center; gap: 6px; color: var(--dsw-alias-label-secondary); font-size: 11px; }
-    .ocgo-dot { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
-    .ocgo-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin-top: 15px; }
-    .ocgo-breakdown-item { display: flex; justify-content: space-between; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--dsw-alias-border-l1); font-size: 11.5px; }
-    .ocgo-breakdown-item:last-child, .ocgo-breakdown-item:nth-last-child(2) { border-bottom: 0; padding-bottom: 0; }
-    .ocgo-breakdown-value { font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-primary); }
-    .ocgo-source-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--dsw-alias-border-l1); font-size: 11.5px; }
-    .ocgo-source-row:last-child { border-bottom: 0; }
-    .ocgo-cost-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
-    .ocgo-cost-card { display: flex; flex-direction: column; min-height: 124px; }
-    .ocgo-cost-value { margin-top: 10px; font-size: 27px; line-height: 1; font-weight: 650; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
-    .ocgo-cost-unit { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 4px; }
-    .ocgo-cost-formula { margin-top: auto; padding-top: 14px; color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 1.35; }
-    .ocgo-table-wrap { overflow-x: auto; border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px; background: var(--dsw-alias-bg-layer-1); }
-    .ocgo-table { width: 100%; border-collapse: collapse; font-size: 11.5px; min-width: 660px; }
-    .ocgo-table th { text-align: left; padding: 9px 11px; color: var(--dsw-alias-label-secondary); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; border-bottom: 1px solid var(--dsw-alias-border-l1); white-space: nowrap; }
-    .ocgo-table td { padding: 9px 11px; border-bottom: 1px solid var(--dsw-alias-border-l1); vertical-align: middle; }
+    .ocgo-card {
+      min-width: 0; padding: 16px; box-sizing: border-box;
+      border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-lg);
+      background: var(--dsw-alias-bg-layer-1);
+    }
+    .ocgo-summary {
+      display: grid; gap: 16px 24px; margin-top: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    }
+    .ocgo-summary-label { font-size: 11.5px; line-height: 16px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
+    .ocgo-summary-plan { margin-top: 6px; font-size: 22px; line-height: 1.2; font-weight: 550; letter-spacing: -.02em; }
+    .ocgo-summary-model { margin-top: 6px; font-size: 15px; line-height: 22px; font-weight: 500; overflow-wrap: anywhere; }
+    .ocgo-summary-sub { margin-top: 4px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-summary-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+    .ocgo-progress { height: 6px; margin-top: 12px; border-radius: 999px; overflow: hidden; background: var(--dsw-alias-bg-layer-2); }
+    .ocgo-progress > span { display: block; height: 100%; border-radius: inherit; transition: width .3s ease; }
+    .ocgo-section { margin-top: 28px; }
+    .ocgo-section-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .ocgo-section-title { margin: 0; font-size: 15px; line-height: 22px; font-weight: 500; }
+    .ocgo-section-sub { margin: 2px 0 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-meters {
+      display: grid; gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+    }
+    .ocgo-meter-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .ocgo-meter-label { font-size: 13px; line-height: 20px; font-weight: 500; }
+    .ocgo-meter-value { display: flex; align-items: baseline; gap: 8px; margin-top: 10px; }
+    .ocgo-meter-percent { font-size: 28px; line-height: 1; font-weight: 550; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+    .ocgo-meter-of { font-size: 12px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-meter-rows { display: grid; gap: 2px; margin-top: 10px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-meter-foot { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--dsw-alias-border-l1); font-size: 11.5px; line-height: 17px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-models-toolbar { display: flex; align-items: center; gap: 8px; }
+    .ocgo-input {
+      height: 28px; padding: 0 9px; box-sizing: border-box;
+      border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-sm);
+      background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary);
+      font: inherit; font-size: 12px; line-height: 18px; min-width: 0;
+    }
+    .ocgo-input::placeholder { color: var(--dsw-alias-label-caption); }
+    @media (pointer: coarse) { .ocgo-input { font-size: 16px; } }
+    .ocgo-search { width: 200px; max-width: 100%; }
+    .ocgo-table-wrap { overflow-x: auto; border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-lg); background: var(--dsw-alias-bg-layer-1); }
+    .ocgo-table { width: 100%; min-width: 680px; border-collapse: collapse; font-size: 12px; }
+    .ocgo-table th {
+      padding: 8px 12px; text-align: left; white-space: nowrap;
+      font-size: 11.5px; line-height: 16px; font-weight: 500;
+      color: var(--dsw-alias-label-secondary);
+      border-bottom: 1px solid var(--dsw-alias-border-l1);
+    }
+    .ocgo-table td { padding: 8px 12px; border-bottom: 1px solid var(--dsw-alias-border-l1); vertical-align: middle; }
     .ocgo-table tbody tr:last-child td { border-bottom: 0; }
-    .ocgo-table tbody tr:hover td { background: color-mix(in srgb, var(--dsw-alias-brand-primary) 4%, transparent); }
+    @media (hover: hover) {
+      .ocgo-table tbody tr:hover td { background: var(--dsw-alias-interactive-bg-hover); }
+    }
     .ocgo-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .ocgo-model-name { font-weight: 550; }
-    .ocgo-model-id { display: block; color: var(--dsw-alias-label-secondary); font-size: 10px; margin-top: 1px; }
-    .ocgo-account-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .ocgo-kv { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--dsw-alias-border-l1); font-size: 11.5px; }
+    .ocgo-model-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .ocgo-model-name { font-weight: 500; }
+    .ocgo-model-id { display: block; margin-top: 1px; font-size: 11px; line-height: 15px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
+    .ocgo-empty { padding: 20px 16px; font-size: 12.5px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-note-text { margin: 10px 0 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-account-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+    .ocgo-kv { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--dsw-alias-border-l1); font-size: 12px; line-height: 18px; }
     .ocgo-kv:last-child { border-bottom: 0; padding-bottom: 0; }
     .ocgo-kv-key { color: var(--dsw-alias-label-secondary); }
-    .ocgo-kv-val { text-align: right; }
-    .ocgo-connect-wrap { max-width: 620px; margin: 34px auto 0; }
+    .ocgo-kv-val { text-align: right; overflow-wrap: anywhere; }
+    .ocgo-card-label { font-size: 11.5px; line-height: 16px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
+    .ocgo-details { border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-lg); background: var(--dsw-alias-bg-layer-1); padding: 12px 16px; }
+    .ocgo-details > summary { cursor: pointer; font-size: 12.5px; line-height: 18px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
+    .ocgo-details[open] > summary { color: var(--dsw-alias-label-primary); }
+    .ocgo-details-body { padding-top: 12px; }
+    .ocgo-details .ocgo-kv { font-size: 12px; }
+    .ocgo-inline-details { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--dsw-alias-border-l1); }
+    .ocgo-inline-details > summary { cursor: pointer; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-inline-details[open] > summary { color: var(--dsw-alias-label-primary); }
+    .ocgo-hint { margin: 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .ocgo-form .ocgo-input { flex: 1 1 240px; }
+    .ocgo-connect { max-width: 560px; margin: 40px auto 0; }
     .ocgo-connect-card { padding: 24px; }
-    .ocgo-connect-title { margin: 0 0 8px; font-size: 18px; font-weight: 650; letter-spacing: -.02em; }
-    .ocgo-connect-body { margin: 0 0 18px; color: var(--dsw-alias-label-secondary); font-size: 12.5px; line-height: 1.55; }
-    .ocgo-form { display: flex; gap: 8px; align-items: stretch; }
-    .ocgo-input { flex: 1; min-width: 0; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; }
-    .ocgo-input:focus { outline: 2px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, transparent); outline-offset: 1px; border-color: var(--dsw-alias-brand-primary); }
-    .ocgo-form-hint { margin-top: 10px; color: var(--dsw-alias-label-secondary); font-size: 11px; }
-    .ocgo-error { margin-top: 12px; padding: 9px 11px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, var(--dsw-alias-border-l1)); background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent); color: var(--dsw-alias-state-error-primary); font-size: 11.5px; }
-    .ocgo-empty { padding: 22px; text-align: center; color: var(--dsw-alias-label-secondary); font-size: 12px; }
-    .ocgo-skeleton { height: 84px; border-radius: 12px; background: linear-gradient(90deg, var(--dsw-alias-bg-layer-1), var(--dsw-alias-bg-layer-2), var(--dsw-alias-bg-layer-1)); background-size: 200% 100%; animation: ocgo-shimmer 1.4s infinite; }
-    @keyframes ocgo-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    .ocgo-notes { border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px; background: var(--dsw-alias-bg-layer-1); padding: 14px 16px; }
-    .ocgo-notes summary { cursor: pointer; color: var(--dsw-alias-label-secondary); font-size: 11.5px; font-weight: 600; }
-    .ocgo-notes ul { margin: 10px 0 0; padding-left: 18px; color: var(--dsw-alias-label-secondary); font-size: 11.5px; line-height: 1.55; }
-    .ocgo-notes li { margin: 4px 0; }
-    .ocgo-footer { margin-top: 12px; color: var(--dsw-alias-label-secondary); font-size: 10.5px; text-align: center; }
-    .ocgo-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
-    @media (max-width: 920px) {
-      .ocgo-hero { grid-template-columns: 1fr 1fr; }
-      .ocgo-token-grid, .ocgo-account-grid { grid-template-columns: 1fr; }
-      .ocgo-cost-grid { grid-template-columns: 1fr; }
+    .ocgo-connect-title { margin: 0; font-size: 18px; line-height: 26px; font-weight: 500; }
+    .ocgo-connect-body { margin: 8px 0 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-connect-foot { margin-top: 14px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-error {
+      margin-top: 10px; padding: 8px 10px; border-radius: var(--dsw-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 40%, var(--dsw-alias-border-l1));
+      background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 7%, transparent);
+      color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 18px;
     }
-    @media (max-width: 640px) {
-      .ocgo-shell { padding: 20px 16px 56px; }
-      .ocgo-head { flex-direction: column; }
-      .ocgo-head-actions { justify-content: flex-start; }
-      .ocgo-hero { grid-template-columns: 1fr; }
-      .ocgo-title { font-size: 23px; }
-      .ocgo-form { flex-direction: column; }
+    .ocgo-error-detail { display: block; margin-top: 2px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-key-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--dsw-alias-border-l1); }
+    .ocgo-notes { border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-lg); background: var(--dsw-alias-bg-layer-1); padding: 12px 16px; }
+    .ocgo-notes > summary { cursor: pointer; font-size: 12.5px; line-height: 18px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
+    .ocgo-notes[open] > summary { color: var(--dsw-alias-label-primary); }
+    .ocgo-note-list { margin: 10px 0 0; padding-left: 18px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
+    .ocgo-note-list li { margin: 5px 0; }
+    .ocgo-footer { margin: 16px 0 0; text-align: center; font-size: 11.5px; color: var(--dsw-alias-label-caption); }
+    .ocgo-skeleton { height: 92px; border-radius: var(--dsw-radius-lg); background: linear-gradient(90deg, var(--dsw-alias-bg-layer-1), var(--dsw-alias-bg-layer-2), var(--dsw-alias-bg-layer-1)); background-size: 200% 100%; animation: ocgo-shimmer 1.4s infinite; }
+    @keyframes ocgo-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      .ocgo-progress > span { transition: none; }
+      .ocgo-skeleton { animation: none; }
     }
     `
 
@@ -402,8 +490,8 @@ window.__ModuleLoader__.load({
       if (n == null) return '—'
       const abs = Math.abs(n)
       if (abs >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`
-      if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
-      if (abs >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+      if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`
+      if (abs >= 1_000) return `${(n / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}K`
       return Math.round(n).toLocaleString()
     }
 
@@ -411,29 +499,27 @@ window.__ModuleLoader__.load({
       const n = asNumber(value)
       if (n == null) return '—'
       const abs = Math.abs(n)
-      const digits = abs > 0 && abs < 0.01 ? 5 : abs < 1 ? 4 : 2
+      const digits = abs !== 0 && abs < 0.01 ? 4 : abs < 1 ? 3 : 2
       return `$${n.toFixed(digits)}`
     }
 
     function fmtRate(value) {
       const n = asNumber(value)
       if (n == null) return '—'
-      const abs = Math.abs(n)
-      return `$${n.toFixed(abs > 0 && abs < 1 ? 3 : 2)}`
+      return `$${n.toFixed(Math.abs(n) < 1 ? 3 : 2)}`
     }
 
     function fmtPct(value) {
       const n = asNumber(value)
       if (n == null) return '—'
       if (n > 0 && n < 0.1) return `${n.toFixed(2)}%`
-      if (n > 0 && n < 1) return `${n.toFixed(1)}%`
+      if (n < 10) return `${n.toFixed(1)}%`
       return `${Math.round(n)}%`
     }
 
     function fmtDuration(ms) {
       const n = asNumber(ms)
-      if (n == null) return '—'
-      if (n <= 0) return '0m'
+      if (n == null || n <= 0) return '0m'
       const minutes = Math.floor(n / 60_000)
       const days = Math.floor(minutes / 1440)
       const hours = Math.floor((minutes % 1440) / 60)
@@ -457,15 +543,12 @@ window.__ModuleLoader__.load({
       const n = asNumber(ts)
       if (n == null) return '—'
       try {
-        return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(n)
+        return new Intl.DateTimeFormat(undefined, {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+        }).format(n)
       } catch {
         return new Date(n).toISOString()
       }
-    }
-
-    function fmtRange(start, end) {
-      if (!start || !end) return '—'
-      return `${fmtDate(start)} – ${fmtDate(end)}`
     }
 
     function progressColor(percent) {
@@ -475,8 +558,58 @@ window.__ModuleLoader__.load({
       return 'var(--dsw-alias-brand-primary)'
     }
 
+    function windowLabel(key, t) {
+      return t(WINDOW_KEYS[key] || 'windowMonthly')
+    }
+
+    function failureOf(body, status) {
+      const failure = new Error(body?.detail || body?.error || `HTTP ${status}`)
+      failure.code = typeof body?.error === 'string' ? body.error : undefined
+      failure.detail = typeof body?.detail === 'string' ? body.detail : undefined
+      failure.status = status
+      return failure
+    }
+
+    function apiErrorText(error, t) {
+      const key = error?.code ? ERROR_KEYS[error.code] : undefined
+      if (key) return t(key)
+      if (error?.status === 401 || error?.status === 403) return t('sessionExpired')
+      return t('unknownError')
+    }
+
+    function errorDetail(error) {
+      return typeof error?.detail === 'string' && error.detail ? error.detail : null
+    }
+
+    function dataErrorText(entry, t) {
+      const detail = entry.detail ? ` (${entry.detail})` : ''
+      if (entry.code === 'console') {
+        const hint = entry.reason === 'invalid-key'
+          ? t('hintInvalidKey')
+          : entry.reason === 'forbidden'
+            ? t('hintForbidden')
+            : entry.reason === 'no-subscription'
+              ? t('hintNoSubscription')
+              : entry.reason === 'network'
+                ? t('hintNetwork')
+                : ''
+        return `${t('errorConsole', { detail })}${hint ? ` ${hint}` : ''}`
+      }
+      if (entry.code === 'usage') return t('errorUsage', { detail })
+      return t('unknownError')
+    }
+
+    function warningText(entry, t) {
+      if (entry.code === 'models-public') return t('warnModelsPublic')
+      if (entry.code === 'catalog-empty') return t('warnCatalogEmpty')
+      return null
+    }
+
     function Glyph({ name, size = 14 }) {
-      const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': true, style: { display: 'block', flex: '0 0 auto' } }
+      const common = {
+        width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
+        'aria-hidden': true, style: { display: 'block', flex: '0 0 auto' },
+      }
       const stroke = { stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }
       if (name === 'refresh') {
         return h('svg', common,
@@ -489,70 +622,75 @@ window.__ModuleLoader__.load({
           h('path', { ...stroke, d: 'M19 5l-8 8' }),
           h('path', { ...stroke, d: 'M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4' }))
       }
-      if (name === 'check') {
-        return h('svg', common, h('path', { ...stroke, d: 'M5 12.5l4.2 4.2L19 7' }))
-      }
       if (name === 'alert') {
         return h('svg', common,
           h('path', { ...stroke, d: 'M12 4l9 16H3L12 4z' }),
           h('path', { ...stroke, d: 'M12 9v5' }),
           h('path', { ...stroke, d: 'M12 17.2v.1' }))
       }
-      if (name === 'key') {
-        return h('svg', common,
-          h('circle', { ...stroke, cx: 8, cy: 15, r: 3.2 }),
-          h('path', { ...stroke, d: 'M10.4 12.6L20 3' }),
-          h('path', { ...stroke, d: 'M15 8l2 2' }))
-      }
-      if (name === 'chevron') {
-        return h('svg', common, h('path', { ...stroke, d: 'M8 10l4 4 4-4' }))
-      }
       return null
     }
 
-    function Pill({ tone = 'idle', children }) {
-      return h('span', { className: cx('ocgo-pill', `ocgo-pill-${tone}`) }, children)
+    function Pill({ tone = 'idle', title, children }) {
+      return h('span', { className: cx('ocgo-pill', `ocgo-pill-${tone}`), title }, children)
     }
 
-    function Progress({ percent }) {
+    function Progress({ percent, label }) {
       const width = Math.max(0, Math.min(100, asNumber(percent) || 0))
-      return h('div', { className: 'ocgo-progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(width) },
-        h('span', { style: { width: `${width}%`, background: progressColor(width) } }))
+      return h('div', {
+        className: 'ocgo-progress',
+        role: 'progressbar',
+        'aria-label': label,
+        'aria-valuemin': 0,
+        'aria-valuemax': 100,
+        'aria-valuenow': Math.round(width),
+      }, h('span', { style: { width: `${width}%`, background: progressColor(width) } }))
     }
 
-    function useApi(t) {
+    function useSnapshot() {
       const [snapshot, setSnapshot] = useState(null)
       const [loading, setLoading] = useState(true)
       const [error, setError] = useState(null)
 
-      const load = useCallback(async (force = false, silent = false) => {
-        if (!silent) setLoading(true)
+      const load = useCallback(async ({ force = false, quiet = false } = {}) => {
+        if (!quiet) setLoading(true)
         try {
           const response = await fetch(`${API}/status${force ? '?refresh=1' : ''}`, {
             headers: { accept: 'application/json' },
             cache: 'no-store',
           })
           const body = await response.json().catch(() => null)
-          if (!response.ok || !body || body.ok === false) {
-            throw new Error(body?.error || `HTTP ${response.status}`)
-          }
+          if (!response.ok || !body || body.ok === false) throw failureOf(body, response.status)
           setSnapshot(body)
           setError(null)
         } catch (cause) {
-          if (!silent || !snapshot) setError(cause instanceof Error ? cause.message : String(cause))
+          setError(cause instanceof Error ? cause : new Error(String(cause)))
         } finally {
-          if (!silent) setLoading(false)
+          if (!quiet) setLoading(false)
         }
       }, [])
 
       useEffect(() => {
-        let alive = true
-        load(false).finally(() => { if (alive) setLoading(false) })
-        const timer = setInterval(() => { if (alive) load(false, true) }, 5 * 60_000)
-        return () => { alive = false; clearInterval(timer) }
+        void load()
       }, [load])
 
-      return { snapshot, loading, error, reload: load, setSnapshot, setError }
+      const refreshSeconds = Math.max(60, Math.round(Number(snapshot?.refreshSeconds) || 300))
+      useEffect(() => {
+        if (!snapshot?.connected) return undefined
+        const timer = setInterval(() => {
+          if (typeof document === 'undefined' || !document.hidden) void load({ quiet: true })
+        }, refreshSeconds * 1000)
+        const onVisible = () => {
+          if (typeof document !== 'undefined' && !document.hidden) void load({ quiet: true })
+        }
+        document.addEventListener('visibilitychange', onVisible)
+        return () => {
+          clearInterval(timer)
+          document.removeEventListener('visibilitychange', onVisible)
+        }
+      }, [load, refreshSeconds, snapshot?.connected])
+
+      return { snapshot, setSnapshot, loading, error, setError, reload: load }
     }
 
     function useNow() {
@@ -564,496 +702,498 @@ window.__ModuleLoader__.load({
       return now
     }
 
+    function useKeyForm(onSaved) {
+      const [value, setValue] = useState('')
+      const [busy, setBusy] = useState(false)
+      const [removing, setRemoving] = useState(false)
+      const [error, setError] = useState(null)
+
+      async function submit(event) {
+        event.preventDefault()
+        if (busy || !value.trim()) return
+        setBusy(true)
+        setError(null)
+        try {
+          const response = await fetch(`${API}/connect`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify({ apiKey: value.trim() }),
+          })
+          const body = await response.json().catch(() => null)
+          if (!response.ok || !body || body.ok === false) throw failureOf(body, response.status)
+          setValue('')
+          onSaved(body)
+        } catch (cause) {
+          setError(cause instanceof Error ? cause : new Error(String(cause)))
+        } finally {
+          setBusy(false)
+        }
+      }
+
+      async function remove() {
+        if (removing) return
+        setRemoving(true)
+        setError(null)
+        try {
+          const response = await fetch(`${API}/disconnect`, {
+            method: 'POST',
+            headers: { accept: 'application/json' },
+          })
+          const body = await response.json().catch(() => null)
+          if (!response.ok || !body || body.ok === false) throw failureOf(body, response.status)
+          onSaved(body)
+        } catch (cause) {
+          setError(cause instanceof Error ? cause : new Error(String(cause)))
+        } finally {
+          setRemoving(false)
+        }
+      }
+
+      return { value, setValue, busy, removing, error, submit, remove }
+    }
+
     function Shell({ children }) {
       return h('div', { className: 'ocgo-page' },
         h('style', { dangerouslySetInnerHTML: { __html: CSS } }),
         h('div', { className: 'ocgo-shell' }, children))
     }
 
-    function Header({ snapshot, loading, onRefresh }) {
+    function Header({ t, snapshot, loading, onRefresh }) {
+      const configured = snapshot?.auth?.key?.configured
+      const consoleLinked = snapshot?.auth?.console?.configured
+      const estimated = snapshot?.subscription?.source === 'usage'
       return h('header', { className: 'ocgo-head' },
         h('div', null,
-          h('div', { className: 'ocgo-eyebrow' }, 'OpenCode Go'),
-          h('h1', { className: 'ocgo-title' }, snapshot ? 'Subscription overview' : 'OpenCode Go'),
-          h('p', { className: 'ocgo-sub' }, 'Allowances, usage, and the published rates for each model.')),
+          h('h1', { className: 'ocgo-title' }, t('title')),
+          h('p', { className: 'ocgo-sub' }, t('subtitle'))),
         h('div', { className: 'ocgo-head-actions' },
-          snapshot ? h('span', { className: 'ocgo-updated' }, `Updated ${fmtDateTime(snapshot.fetchedAt)}`) : null,
-          snapshot?.auth?.key?.configured ? h(Pill, { tone: 'ok' }, h(Glyph, { name: 'key', size: 11 }), 'API key') : null,
-          snapshot?.auth?.console?.configured ? h(Pill, { tone: 'ok' }, h(Glyph, { name: 'check', size: 11 }), snapshot.auth.console.via === 'api-key' ? 'Console via key' : 'Console') : h(Pill, { tone: 'idle' }, 'Percentage only'),
-          h('button', { className: 'ocgo-btn', type: 'button', onClick: () => onRefresh(), disabled: loading, title: 'Refresh data' },
-            h(Glyph, { name: 'refresh', size: 13 }), loading ? 'Refreshing…' : 'Refresh'),
-          h('a', { className: 'ocgo-btn ocgo-btn-ghost', href: 'https://opencode.ai/console/go', target: '_blank', rel: 'noreferrer' },
-            'Open console', h(Glyph, { name: 'external', size: 13 }))))
+          snapshot ? h('span', { className: 'ocgo-updated' }, t('updated', { time: fmtDateTime(snapshot.fetchedAt) })) : null,
+          configured
+            ? (consoleLinked
+              ? h(Pill, { tone: 'ok', title: t('exactHint') }, t('exact'))
+              : h(Pill, {
+                tone: 'idle',
+                title: estimated ? t('percentageOnlyHint') : null,
+              }, estimated ? t('percentageOnly') : t('keySaved')))
+            : null,
+          h('button', {
+            className: 'ocgo-btn', type: 'button', disabled: loading,
+            'aria-label': t('refresh'), onClick: () => onRefresh(),
+          }, h(Glyph, { name: 'refresh', size: 13 }), loading ? t('refreshing') : t('refresh')),
+          h('a', {
+            className: 'ocgo-btn ocgo-btn-ghost', href: CONSOLE_URL,
+            target: '_blank', rel: 'noreferrer noopener',
+          }, t('openConsole'), h(Glyph, { name: 'external', size: 13 }))))
     }
 
-    function Banner({ tone = 'info', title, children }) {
-      return h('div', { className: `ocgo-banner ocgo-banner-${tone}` },
-        h('span', { style: { marginTop: 1 } }, h(Glyph, { name: tone === 'info' ? 'check' : 'alert', size: 14 })),
-        h('div', null, title ? h('strong', null, title, ' ') : null, children))
+    function Skeleton() {
+      return h('div', { style: { display: 'grid', gap: 12, marginTop: 16 } },
+        h('div', { className: 'ocgo-skeleton' }),
+        h('div', { className: 'ocgo-skeleton', style: { height: 140 } }))
     }
 
-    async function postApiKey(apiKey) {
-      const response = await fetch(`${API}/connect`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ apiKey: apiKey.trim() }),
-      })
-      const body = await response.json().catch(() => null)
-      if (!response.ok || !body || body.ok === false) {
-        throw new Error(body?.error || `HTTP ${response.status}`)
+    function Alerts({ t, snapshot, error, onRetry }) {
+      const items = []
+      if (error) {
+        const offline = error?.status === 401 || error?.status === 403
+        items.push({
+          key: 'fetch',
+          tone: 'error',
+          text: offline ? t('sessionExpired') : t('loadFailed'),
+          detail: errorDetail(error),
+          retry: true,
+        })
       }
-      return body
+      if (snapshot?.subscription?.needsPaymentMethod) {
+        items.push({ key: 'payment', tone: 'error', text: t('warnNeedsPayment') })
+      }
+      for (const entry of snapshot?.errors || []) {
+        items.push({ key: `error-${entry.code}`, tone: 'error', text: dataErrorText(entry, t) })
+      }
+      if (snapshot?.subscription?.source === 'usage'
+        && !(snapshot?.errors || []).some((entry) => entry.code === 'console')) {
+        items.push({ key: 'fallback', tone: 'warn', text: t('warnUsageFallback') })
+      }
+      if (snapshot?.subscription?.cancelAtPeriodEnd) {
+        items.push({
+          key: 'cancelled', tone: 'warn',
+          text: t('warnCancelled', { date: fmtDate(snapshot.subscription.accessEndsAt) }),
+        })
+      }
+      if (snapshot?.subscription?.useBalance === false) {
+        items.push({ key: 'extra-usage', tone: 'warn', text: t('warnExtraUsageOff') })
+      }
+      for (const meter of snapshot?.meters || []) {
+        if (!meter.rateLimited) continue
+        items.push({
+          key: `limited-${meter.key}`, tone: 'warn',
+          text: t('warnRateLimited', { window: windowLabel(meter.key, t) }),
+        })
+      }
+      for (const entry of snapshot?.warnings || []) {
+        const text = warningText(entry, t)
+        if (text) items.push({ key: `warning-${entry.code}-${entry.model || ''}`, tone: 'warn', text })
+      }
+      if (items.length === 0) return null
+      return h('div', { className: 'ocgo-alerts' }, items.map((item) =>
+        h('div', { key: item.key, className: cx('ocgo-alert', `ocgo-alert-${item.tone}`), role: 'status' },
+          item.tone === 'error' ? h('span', { className: 'ocgo-alert-icon' }, h(Glyph, { name: 'alert', size: 14 })) : null,
+          h('div', { className: 'ocgo-alert-body' },
+            h('p', { className: 'ocgo-alert-text' }, item.text),
+            item.detail ? h('span', { className: 'ocgo-error-detail' }, item.detail) : null,
+            item.retry
+              ? h('button', { className: 'ocgo-btn ocgo-btn-ghost', type: 'button', onClick: () => onRetry() }, t('retry'))
+              : null))))
     }
 
-    function useKeyForm(onConnected) {
-      const [key, setKey] = useState('')
-      const [busy, setBusy] = useState(false)
-      const [localError, setLocalError] = useState(null)
-      async function submit(event) {
-        event.preventDefault()
-        if (!key.trim() || busy) return
-        setBusy(true)
-        setLocalError(null)
-        try {
-          const snapshot = await postApiKey(key)
-          setKey('')
-          onConnected(snapshot)
-        } catch (cause) {
-          setLocalError(cause instanceof Error ? cause.message : String(cause))
-        } finally {
-          setBusy(false)
-        }
-      }
-      return { key, setKey, busy, localError, submit }
-    }
-
-    function KeyManager({ snapshot, onConnected, hero, error }) {
-      const { key, setKey, busy, localError, submit } = useKeyForm(onConnected)
-      if (hero) {
-        return h('div', { className: 'ocgo-connect-wrap' },
-          h('div', { className: 'ocgo-card ocgo-connect-card' },
-            h('div', { className: 'ocgo-eyebrow' }, 'Connection'),
-            h('h2', { className: 'ocgo-connect-title' }, 'Connect your OpenCode Go key'),
-            h('p', { className: 'ocgo-connect-body' },
-              'Needs a read-only API key from OpenCode Go (Console → Go → API keys, Usage:Read is enough). It is stored securely and used directly for exact Console dollars.'),
-            h('form', { className: 'ocgo-form', onSubmit: submit },
-              h('input', {
-                className: 'ocgo-input',
-                type: 'password',
-                autoComplete: 'off',
-                spellCheck: false,
-                placeholder: 'oc_sk_…',
-                value: key,
-                onChange: (event) => setKey(event.target.value),
-                'aria-label': 'OpenCode Go API key',
-              }),
-              h('button', { className: 'ocgo-btn ocgo-btn-primary', type: 'submit', disabled: busy || !key.trim() },
-                busy ? 'Connecting…' : 'Save and connect')),
-            h('div', { className: 'ocgo-form-hint' },
-              'Copy a read-only key from the OpenCode Console under Go → API keys. ',
-              h('a', { href: 'https://opencode.ai/console/go', target: '_blank', rel: 'noreferrer', style: { color: 'var(--dsw-alias-brand-primary)' } }, 'Open Console → Go → API keys')),
-            (localError || error) ? h('div', { className: 'ocgo-error' }, localError || error) : null))
-      }
-
-      return h('section', { className: 'ocgo-section' },
-        h('div', { className: 'ocgo-section-head' },
-          h('div', null,
-            h('h2', { className: 'ocgo-section-title' }, 'API key'),
-            h('p', { className: 'ocgo-section-sub' },
-              snapshot?.auth?.key?.configured
-                ? `Key saved (${snapshot.auth.key.source || 'stored securely'}) · ${snapshot?.auth?.console?.configured ? `Console ${snapshot.auth.console.via || ''} linked` : 'Console not linked — paste a read-only key below'}`
-                : 'Needs a read-only API key from OpenCode Go — paste it below, it is stored securely.'))),
-        h('div', { className: 'ocgo-card' },
-          h('form', { className: 'ocgo-form', onSubmit: submit },
+    function ConnectScreen({ t, onSaved }) {
+      const form = useKeyForm(onSaved)
+      const detail = form.error ? errorDetail(form.error) : null
+      return h('div', { className: 'ocgo-connect' },
+        h('div', { className: 'ocgo-card ocgo-connect-card' },
+          h('h2', { className: 'ocgo-connect-title' }, t('connectTitle')),
+          h('p', { className: 'ocgo-connect-body' }, t('connectBody')),
+          h('form', { className: 'ocgo-form', onSubmit: form.submit },
             h('input', {
-              className: 'ocgo-input',
-              type: 'password',
-              autoComplete: 'off',
-              spellCheck: false,
-              placeholder: 'oc_sk_… — paste new key to replace',
-              value: key,
-              onChange: (event) => setKey(event.target.value),
-              'aria-label': 'Replace OpenCode Go API key',
+              className: 'ocgo-input', type: 'password', autoComplete: 'off', spellCheck: false,
+              placeholder: t('connectPlaceholder'), value: form.value,
+              'aria-label': t('connectPlaceholder'),
+              onChange: (event) => form.setValue(event.target.value),
             }),
-            h('button', { className: 'ocgo-btn ocgo-btn-primary', type: 'submit', disabled: busy || !key.trim() },
-              busy ? 'Saving…' : snapshot?.auth?.key?.configured ? 'Replace key' : 'Save key')),
-          h('div', { className: 'ocgo-form-hint' },
-            'Needs a read-only key (Usage:Read; owner/admin → Restricted). Member default keys (Models:Request only) give percentages but 403 on Console. ',
-            h('a', { href: 'https://opencode.ai/console/go', target: '_blank', rel: 'noreferrer', style: { color: 'var(--dsw-alias-brand-primary)' } }, 'Open Console → Go → API keys')),
-          (localError) ? h('div', { className: 'ocgo-error' }, localError) : null))
+            h('button', {
+              className: 'ocgo-btn ocgo-btn-primary', type: 'submit',
+              disabled: form.busy || !form.value.trim(),
+            }, form.busy ? t('connecting') : t('connectAction'))),
+          form.error
+            ? h('div', { className: 'ocgo-error' },
+              apiErrorText(form.error, t),
+              detail ? h('span', { className: 'ocgo-error-detail' }, detail) : null)
+            : null,
+          h('p', { className: 'ocgo-connect-foot' },
+            t('connectHint'), ' ',
+            h('a', { className: 'ocgo-link', href: CONSOLE_URL, target: '_blank', rel: 'noreferrer noopener' },
+              t('openConsole')))))
     }
 
-    function StatCard({ label, value, sub, children }) {
-      return h('div', { className: 'ocgo-card' },
-        h('div', { className: 'ocgo-stat-label' }, label),
-        h('div', { className: 'ocgo-stat-value' }, value),
-        sub ? h('div', { className: 'ocgo-stat-sub' }, sub) : null,
-        children)
-    }
-
-    function Hero({ snapshot }) {
-      const subscription = snapshot.subscription
-      const billing = snapshot.billing
-      const allowance = snapshot.allowance || {}
-      const current = snapshot.currentModel
-      const monthly = (snapshot.meters || []).find((m) => m.key === 'monthly')
-      const planValue = subscription ? subscription.plan : '—'
-      const via = subscription?.dataSource === 'api-key' ? 'via API key' : subscription?.source === 'usage' ? 'estimated' : ''
-      const planSub = subscription
-        ? `${fmtUsd(subscription.priceMonthly)} / month ${via}${billing && billing.balance != null ? ` · bal ${fmtUsd(billing.balance)}` : ''}`
-        : 'Save an API key to load exact data'
-      const statusTone = subscription?.cancelAtPeriodEnd ? 'warn' : subscription?.status === 'active' ? 'ok' : subscription?.status === 'limited' ? 'error' : 'idle'
-      const statusText = subscription?.cancelAtPeriodEnd ? 'Cancelling' : subscription?.status === 'active' ? 'Active' : subscription?.status === 'limited' ? 'Limited' : (subscription?.status || '—')
-      const spendValue = monthly ? `${fmtUsd(monthly.used)} / ${fmtUsd(monthly.limit)}` : '—'
-      const spendSub = monthly ? `${fmtPct(monthly.percent)} of monthly window${monthly.remaining != null ? ` · ${fmtUsd(monthly.remaining)} left` : ''}` : '—'
-      const daysLeft = subscription?.accessEndsAt ? Math.max(0, Math.ceil((subscription.accessEndsAt - Date.now()) / 86400000)) : null
-      const remainSub = daysLeft != null ? `${daysLeft}d left in period` : (allowance.baseRemaining != null ? `${fmtUsd(allowance.baseRemaining)} base left` : '')
-      const burnValue = allowance.currentModelUnlimited
-        ? 'Free'
-        : allowance.currentModelBurnMultiplier != null ? `${allowance.currentModelBurnMultiplier.toFixed(2)}×` : '—'
-      const currentSub = current
-        ? `${current.name}${allowance.currentModelRemainingIfExclusive != null && !allowance.currentModelUnlimited ? ` · ${fmtUsd(allowance.currentModelRemainingIfExclusive)} if exclusive` : ''}`
-        : 'No current model detected'
-
-      return h('div', { className: 'ocgo-hero' },
-        h(StatCard, { label: 'Plan', value: planValue, sub: planSub },
-          subscription ? h('div', { style: { marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' } },
+    function Summary({ t, snapshot }) {
+      const sub = snapshot.subscription
+      const current = (snapshot.models || []).find((model) => model.id === snapshot.currentModelId) || null
+      const statusText = sub?.cancelAtPeriodEnd
+        ? t('cancelling')
+        : sub?.status === 'active' ? t('active') : t('unknown')
+      const statusTone = sub?.cancelAtPeriodEnd ? 'warn' : sub?.status === 'active' ? 'ok' : 'idle'
+      const ratesLine = current
+        ? t('ratesLine', {
+          input: fmtRate(current.rates.input),
+          output: fmtRate(current.rates.output),
+          cache: fmtRate(current.rates.cacheRead),
+        })
+        : null
+      return h('div', { className: 'ocgo-card ocgo-summary' },
+        h('div', null,
+          h('div', { className: 'ocgo-summary-label' }, t('plan')),
+          h('div', { className: 'ocgo-summary-plan' }, sub ? sub.plan : '—'),
+          sub ? h('div', { className: 'ocgo-summary-sub' }, `${fmtUsd(sub.priceMonthly)} ${t('perMonth')}`) : null,
+          sub ? h('div', { className: 'ocgo-summary-pills' },
             h(Pill, { tone: statusTone }, statusText),
-            subscription.cancelAtPeriodEnd && subscription.accessEndsAt
-              ? h(Pill, { tone: 'warn' }, `Ends ${fmtDate(subscription.accessEndsAt)}`)
-              : subscription.accessEndsAt
-                ? h(Pill, { tone: 'idle' }, `Renews ${fmtDate(subscription.accessEndsAt)}`)
-                : null,
-            subscription.needsPaymentMethod ? h(Pill, { tone: 'error' }, 'Needs payment') : null,
-            subscription.useBalance === false ? h(Pill, { tone: 'idle' }, 'Extra off') : subscription.useBalance === true ? h(Pill, { tone: 'ok' }, 'Extra on') : null) : null),
-        h(StatCard, {
-          label: 'Monthly spend (exact)',
-          value: spendValue,
-          sub: spendSub,
-        }, monthly ? h(Progress, { percent: monthly.percent }) : null),
-        h(StatCard, {
-          label: 'Remaining',
-          value: monthly?.remaining != null ? fmtUsd(monthly.remaining) : (allowance.baseRemaining != null ? fmtUsd(allowance.baseRemaining) : '—'),
-          sub: remainSub,
-        }, current && !allowance.currentModelUnlimited && allowance.currentModelRemainingIfExclusive != null
-          ? h('div', { className: 'ocgo-stat-sub', style: { marginTop: 10 } },
-            `${fmtUsd(allowance.currentModelRemainingIfExclusive)} left on ${current.name}`)
-          : null),
-        h(StatCard, {
-          label: 'Current model burn',
-          value: burnValue,
-          sub: currentSub,
-        }, current && current.rates
-          ? h('div', { className: 'ocgo-stat-sub', style: { marginTop: 10 } },
-            `${fmtRate(current.rates.input)} in · ${fmtRate(current.rates.output)} out / 1M`)
-          : null))
+            sub.accessEndsAt != null
+              ? h(Pill, { tone: sub.cancelAtPeriodEnd ? 'warn' : 'idle' },
+                t(sub.cancelAtPeriodEnd ? 'endsOn' : 'renewsOn', { date: fmtDate(sub.accessEndsAt) }))
+              : null) : null),
+        h('div', null,
+          h('div', { className: 'ocgo-summary-label' }, t('currentModel')),
+          h('div', { className: 'ocgo-summary-model' }, current ? current.name : '—'),
+          ratesLine ? h('div', { className: 'ocgo-summary-sub' }, ratesLine) : null,
+          current && current.peakFactor > 1
+            ? h('div', { className: 'ocgo-summary-pills' },
+              h(Pill, { tone: 'warn' }, t('peak', { factor: current.peakFactor })))
+            : null))
     }
 
-    function MeterCard({ meter, baseAllowance, now }) {
-      const resetsAt = asNumber(meter.resetsAt)
+    function MeterCard({ t, meter, now }) {
       const pace = meter.pace
-      const paceTone = pace == null ? 'idle' : meter.rateLimited ? 'error' : pace > 1.4 ? 'warn' : pace < 0.6 ? 'idle' : 'ok'
-      const resetIn = resetsAt != null ? resetsAt - now : null
+      const tone = meter.rateLimited
+        ? 'error'
+        : pace == null ? 'idle' : pace > 1.4 ? 'warn' : pace >= 0.6 ? 'ok' : 'idle'
+      const resetIn = meter.resetsAt != null ? meter.resetsAt - now : null
+      const resetText = resetIn == null
+        ? t('resetsUnknown')
+        : resetIn <= 0 ? t('resetsNow') : t('resetsIn', { time: fmtDuration(resetIn) })
       return h('div', { className: 'ocgo-card' },
         h('div', { className: 'ocgo-meter-head' },
-          h('div', { className: 'ocgo-meter-label' }, meter.label),
-          meter.rateLimited ? h(Pill, { tone: 'error' }, 'Rate limited') : h(Pill, { tone: paceTone }, pace == null ? '— pace' : `${pace.toFixed(2)}× pace`)),
+          h('div', { className: 'ocgo-meter-label' }, windowLabel(meter.key, t)),
+          h(Pill, { tone: meter.rateLimited ? 'error' : tone, title: t('paceHint') },
+            meter.rateLimited
+              ? t('rateLimited')
+              : pace == null ? t('paceNone') : t('pace', { value: pace.toFixed(2) }))),
         h('div', { className: 'ocgo-meter-value' },
           h('span', { className: 'ocgo-meter-percent' }, fmtPct(meter.percent)),
-          h('span', { className: 'ocgo-meter-of' }, meter.limit != null ? `of ${fmtUsd(meter.limit)}` : 'of API pool')),
-        h(Progress, { percent: meter.percent }),
+          h('span', { className: 'ocgo-meter-of' },
+            meter.limit != null ? t('ofLimit', { limit: fmtUsd(meter.limit) }) : t('ofPool'))),
+        h(Progress, { percent: meter.percent, label: windowLabel(meter.key, t) }),
         h('div', { className: 'ocgo-meter-rows' },
-          h('span', null, `${fmtUsd(meter.used)} used of ${fmtUsd(meter.limit)}`),
-          h('span', null, `${fmtUsd(meter.remaining)} left · ${meter.status || 'ok'}`)),
-        h('div', { className: 'ocgo-meter-foot' },
-          h('span', null, resetIn == null ? '—' : resetIn <= 0 ? 'Resets now' : `Resets in ${fmtDuration(resetIn)}`),
-          h('span', { title: '1.00× pace burns the window exactly by reset.' }, `${Math.round(meter.percent || 0)}% used`)))
+          h('span', null, t('usedOf', { used: fmtUsd(meter.used), limit: fmtUsd(meter.limit) })),
+          h('span', null, meter.remaining != null ? `${fmtUsd(meter.remaining)} ${t('left')}` : '—')),
+        h('div', { className: 'ocgo-meter-foot', title: t('paceHint') }, resetText))
     }
 
-    function AllowanceSection({ snapshot }) {
+    function MetersSection({ t, snapshot, now }) {
+      const meters = snapshot.meters || []
+      if (meters.length === 0) return null
+      return h('section', { className: 'ocgo-section' },
+        h('div', { className: 'ocgo-section-head' },
+          h('div', null,
+            h('h2', { className: 'ocgo-section-title' }, t('usageWindows')),
+            h('p', { className: 'ocgo-section-sub' }, t('usageWindowsSub')))),
+        h('div', { className: 'ocgo-meters' }, meters.map((meter) =>
+          h(MeterCard, { key: meter.key, t, meter, now }))))
+    }
+
+    function ModelsSection({ t, snapshot }) {
       const models = snapshot.models || []
-      const currentId = snapshot.currentModel?.id
-      const allowance = snapshot.allowance || {}
-      const [showAll, setShowAll] = useState(false)
-      const hasUnavailable = models.some((model) => model.available === false)
-      const visible = showAll || !hasUnavailable ? models : models.filter((model) => model.available !== false)
-      return h('section', { className: 'ocgo-section' },
-        h('div', { className: 'ocgo-section-head' },
-          h('div', null,
-            h('h2', { className: 'ocgo-section-title' }, 'Model exchange rates'),
-            h('p', { className: 'ocgo-section-sub' }, `${visible.length} shown${snapshot.availableCount ? ` · ${snapshot.availableCount} enabled for this workspace` : ''} · base allowance ${fmtUsd(allowance.baseAllowance)}`)),
-          hasUnavailable
-            ? h('button', { className: 'ocgo-btn', type: 'button', onClick: () => setShowAll((value) => !value) },
-              showAll ? 'Show available only' : `Show all ${models.length}`)
-            : null),
-        h('div', { className: 'ocgo-table-wrap' },
-          visible.length === 0
-            ? h('div', { className: 'ocgo-empty' }, 'No models are available to this workspace yet.')
-            : h('table', { className: 'ocgo-table' },
-              h('thead', null,
-                h('tr', null,
-                  ['Model', 'Status', 'Monthly cap', 'Burn rate', 'Remaining if exclusive'].map((label) =>
-                    h('th', { key: label, className: label === 'Model' || label === 'Status' ? '' : 'ocgo-num' }, label)))),
-              h('tbody', null,
-                visible.map((model) =>
-                  h('tr', { key: model.id },
-                    h('td', null,
-                      h('span', { className: 'ocgo-model-name' }, model.name),
-                      h('span', { className: 'ocgo-model-id' }, model.id)),
-                    h('td', null,
-                      h('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap' } },
-                        model.id === currentId ? h(Pill, { tone: 'ok' }, 'Current') : null,
-                        model.available === true ? h(Pill, { tone: 'ok' }, 'Available') : model.available === false ? h(Pill, { tone: 'idle' }, 'Not enabled') : null)),
-                    h('td', { className: 'ocgo-num' }, model.unlimited ? 'Unlimited' : model.monthlyAllowance != null ? fmtUsd(model.monthlyAllowance) : '—'),
-                    h('td', { className: 'ocgo-num' }, model.unlimited ? 'Free' : model.burnMultiplier != null ? `${model.burnMultiplier.toFixed(2)}×` : '—'),
-                    h('td', { className: 'ocgo-num' }, model.unlimited ? 'Unlimited' : model.remainingIfExclusive != null ? fmtUsd(model.remainingIfExclusive) : '—')))))),
-        h('p', { className: 'ocgo-section-sub', style: { marginTop: 8 } },
-          `The largest model cap is the base (${fmtUsd(allowance.baseAllowance)}). Burn rate = base allowance ÷ model cap, so smaller-cap models consume base faster. The API percentage is the blended total, so mixed usage needs only the one base meter.`))
-    }
-
-    function RatesSection({ snapshot }) {
-      const current = snapshot.currentModel
-      const models = (snapshot.models || []).filter((model) => model.available !== false)
-      const cards = current ? [
-        { label: 'Input', value: current.free ? 'Free' : fmtRate(current.rates.input), unit: 'per 1M tokens' },
-        { label: 'Output', value: current.free ? 'Free' : fmtRate(current.rates.output), unit: 'per 1M tokens' },
-        { label: 'Cache read', value: current.free ? 'Free' : fmtRate(current.rates.cacheRead), unit: 'per 1M tokens' },
-      ] : []
-      return h('section', { className: 'ocgo-section' },
-        h('div', { className: 'ocgo-section-head' },
-          h('div', null,
-            h('h2', { className: 'ocgo-section-title' }, 'Per-million token rates'),
-            h('p', { className: 'ocgo-section-sub' }, `Published rates from the OpenCode Go model API${current ? ` · ${current.name}` : ''}`))),
-        current ? h('div', { className: 'ocgo-cost-grid' },
-          cards.map((card) =>
-            h('div', { key: card.label, className: 'ocgo-card ocgo-cost-card' },
-              h('div', { className: 'ocgo-stat-label' }, card.label),
-              h('div', { className: 'ocgo-cost-value' }, card.value),
-              h('div', { className: 'ocgo-cost-unit' }, card.unit),
-              h('div', { className: 'ocgo-cost-formula' }, current.peakFactor > 1 ? `${current.peakFactor}× during peak hours` : 'Base rate')))) : null,
-        h('div', { className: 'ocgo-table-wrap', style: { marginTop: 12 } },
-          models.length === 0
-            ? h('div', { className: 'ocgo-empty' }, 'No model rates are available.')
-            : h('table', { className: 'ocgo-table' },
-              h('thead', null,
-                h('tr', null,
-                  ['Model', 'In $/M', 'Out $/M', 'Cache $/M', 'Context', 'Max out', 'Allowance'].map((label) =>
-                    h('th', { key: label, className: label === 'Model' ? '' : 'ocgo-num' }, label)))),
-              h('tbody', null,
-                models.map((model) =>
-                  h('tr', { key: model.id },
-                    h('td', null,
-                      h('span', { className: 'ocgo-model-name' }, model.name),
-                      h('span', { className: 'ocgo-model-id' }, model.id)),
-                    h('td', { className: 'ocgo-num' }, model.free ? 'Free' : fmtRate(model.rates.input)),
-                    h('td', { className: 'ocgo-num' }, model.free ? 'Free' : fmtRate(model.rates.output)),
-                    h('td', { className: 'ocgo-num' }, model.free ? 'Free' : fmtRate(model.rates.cacheRead)),
-                    h('td', { className: 'ocgo-num' }, model.context ? fmtTokens(model.context) : '—'),
-                    h('td', { className: 'ocgo-num' }, model.maxTokens ? fmtTokens(model.maxTokens) : '—'),
-                    h('td', { className: 'ocgo-num' }, model.unlimited ? 'Unlimited' : model.monthlyAllowance != null ? fmtUsd(model.monthlyAllowance) : '—')))))),
-        h('p', { className: 'ocgo-section-sub', style: { marginTop: 8 } },
-          'The API reports usage in dollars and percentages, not token totals. These are the published rates per million tokens; no local token counting is used.'))
-    }
-
-    function AccountSection({ snapshot }) {
-      const subscription = snapshot.subscription
-      const billing = snapshot.billing
-      if (!subscription) {
-        return h('section', { className: 'ocgo-section' },
-          h('div', { className: 'ocgo-section-head' },
-            h('div', null,
-              h('h2', { className: 'ocgo-section-title' }, 'Subscription & billing'),
-              h('p', { className: 'ocgo-section-sub' }, 'Save an API key for exact Console data'))),
-          h('div', { className: 'ocgo-card ocgo-empty' }, 'Console details are unavailable. Percentage usage and the model catalog still work.'))
-      }
-      const subRows = [
-        ['Plan', `${subscription.plan} · ${fmtUsd(subscription.priceMonthly)}/mo (${subscription.planId})`],
-        ['Source', subscription.dataSource === 'api-key' ? 'Console via API key (exact)' : `Console ${subscription.source}`],
-        ['Status', subscription.cancelAtPeriodEnd ? `Cancelling (ends ${fmtDate(subscription.accessEndsAt)})` : subscription.status],
-        ['Period', fmtRange(subscription.accessStartsAt, subscription.accessEndsAt)],
-        [subscription.cancelAtPeriodEnd ? 'Ends' : 'Renews', fmtDate(subscription.accessEndsAt)],
-        ['Cancel reason', subscription.renewalStopReason || '—'],
-        ['Resumability', subscription.resumability || '—'],
-        ['Next period paid', subscription.nextPeriodPaid == null ? '—' : subscription.nextPeriodPaid ? 'Yes' : 'No'],
-        ['Renewal pending', subscription.renewalPending == null ? '—' : subscription.renewalPending ? 'Yes' : 'No'],
-        ['Extra usage', subscription.useBalance == null ? 'Unknown' : subscription.useBalance ? 'On (bills balance)' : 'Off (stops at cap)'],
-        ['Upgrade', subscription.upgrade?.amount != null ? `${fmtUsd(subscription.upgrade.amount)} ${subscription.upgrade.currency}` : '—'],
-        ['Teams', subscription.teams ? `${fmtUsd(subscription.teams.amount)} ${subscription.teams.currency}${subscription.teams.memberCount ? ` · ${subscription.teams.memberCount} members` : ''}` : '—'],
-        ['Included value', subscription.monthlyLimit != null ? `${fmtUsd(subscription.monthlyLimit)} · ${subscription.includedValueMultiple != null ? subscription.includedValueMultiple.toFixed(1) : '—'}× plan` : '—'],
-      ]
-      const billRows = billing ? [
-        ['Mode', billing.mode || '—'],
-        ['Balance', billing.balance != null ? fmtUsd(billing.balance) : '—'],
-        ['Available', billing.available != null ? fmtUsd(billing.available) : '—'],
-        ['Credit limit', billing.creditLimit != null ? fmtUsd(billing.creditLimit) : '—'],
-        ['Can purchase', billing.canPurchaseCredits == null ? '—' : billing.canPurchaseCredits ? 'Yes' : 'No'],
-        ['Auto-recharge', billing.canEnableAutoRecharge == null ? '—' : billing.canEnableAutoRecharge ? 'Yes' : 'No'],
-      ] : [['Billing', 'API key has no billing scope or lookup failed']]
-      return h('section', { className: 'ocgo-section' },
-        h('div', { className: 'ocgo-section-head' },
-          h('div', null,
-            h('h2', { className: 'ocgo-section-title' }, 'Subscription & billing'),
-            h('p', { className: 'ocgo-section-sub' }, `Exact Console data ${subscription.dataSource ? `· ${subscription.dataSource}` : ''}${billing ? ' · billing live' : ''}`))),
-        h('div', { className: 'ocgo-account-grid' },
-          h('div', { className: 'ocgo-card' },
-            h('div', { className: 'ocgo-stat-label' }, 'Subscription'),
-            subRows.map(([label, value]) => h('div', { key: label, className: 'ocgo-kv' },
-              h('span', { className: 'ocgo-kv-key' }, label),
-              h('span', { className: 'ocgo-kv-val' }, String(value))))),
-          h('div', { className: 'ocgo-card' },
-            h('div', { className: 'ocgo-stat-label' }, 'Billing'),
-            billRows.map(([label, value]) => h('div', { key: label, className: 'ocgo-kv' },
-              h('span', { className: 'ocgo-kv-key' }, label),
-              h('span', { className: 'ocgo-kv-val' }, String(value)))))))
-    }
-
-    function CatalogSection({ models }) {
-      const [open, setOpen] = useState(false)
+      const currentId = snapshot.currentModelId
       const [query, setQuery] = useState('')
       const filtered = useMemo(() => {
         const needle = query.trim().toLowerCase()
-        const rows = needle
-          ? models.filter((model) => `${model.name} ${model.id} ${model.family || ''}`.toLowerCase().includes(needle))
-          : models
-        return [...rows].sort((a, b) => a.name.localeCompare(b.name))
+        if (!needle) return models
+        return models.filter((model) => `${model.name} ${model.id}`.toLowerCase().includes(needle))
       }, [models, query])
+
       return h('section', { className: 'ocgo-section' },
         h('div', { className: 'ocgo-section-head' },
           h('div', null,
-            h('h2', { className: 'ocgo-section-title' }, 'Available models'),
-            h('p', { className: 'ocgo-section-sub' }, `${models.length} models available to this workspace · capability details`)),
-          h('button', { className: 'ocgo-btn', type: 'button', onClick: () => setOpen((value) => !value) },
-            open ? 'Hide catalog' : 'Browse catalog', h(Glyph, { name: 'chevron', size: 13 }))),
-        open ? h('div', null,
-          h('div', { style: { marginBottom: 8 } },
-            h('input', {
-              className: 'ocgo-input',
-              type: 'search',
-              placeholder: 'Search models…',
-              value: query,
-              onChange: (event) => setQuery(event.target.value),
-              'aria-label': 'Search models',
-            })),
-          h('div', { className: 'ocgo-table-wrap' },
+            h('h2', { className: 'ocgo-section-title' }, t('models')),
+            h('p', { className: 'ocgo-section-sub' },
+              t('modelsSub', { count: fmtInt(models.length) }))),
+          models.length > 0
+            ? h('div', { className: 'ocgo-models-toolbar' },
+              h('input', {
+                className: 'ocgo-input ocgo-search', type: 'search',
+                placeholder: t('searchModels'), 'aria-label': t('searchModels'),
+                value: query, onChange: (event) => setQuery(event.target.value),
+              }))
+            : null),
+        models.length === 0
+          ? h('div', { className: 'ocgo-card ocgo-empty' }, t('noModels'))
+          : h('div', { className: 'ocgo-table-wrap' },
             h('table', { className: 'ocgo-table' },
               h('thead', null,
                 h('tr', null,
-                  ['Model', 'In $/M', 'Out $/M', 'Cache $/M', 'Context', 'Max out', 'Tags'].map((label) =>
-                    h('th', { key: label, className: label === 'Model' || label === 'Tags' ? '' : 'ocgo-num' }, label)))),
+                  h('th', null, t('modelColumn')),
+                  h('th', { className: 'ocgo-num' }, t('inputRate')),
+                  h('th', { className: 'ocgo-num' }, t('outputRate')),
+                  h('th', { className: 'ocgo-num' }, t('cacheRate')),
+                  h('th', { className: 'ocgo-num' }, t('context')),
+                  h('th', { className: 'ocgo-num' }, t('maxOut')))),
               h('tbody', null,
-                filtered.map((model) =>
-                  h('tr', { key: model.id },
+                filtered.length === 0
+                  ? h('tr', null, h('td', { colSpan: 6, className: 'ocgo-empty' }, t('noModelsMatch')))
+                  : filtered.map((model) => h('tr', { key: model.id },
                     h('td', null,
-                      h('span', { className: 'ocgo-model-name' }, model.name),
+                      h('div', { className: 'ocgo-model-cell' },
+                        h('span', { className: 'ocgo-model-name' }, model.name),
+                        model.id === currentId ? h(Pill, { tone: 'ok' }, t('current')) : null,
+                        model.peakFactor > 1
+                          ? h(Pill, { tone: 'warn', title: t('peakHint') }, t('peak', { factor: model.peakFactor }))
+                          : null),
                       h('span', { className: 'ocgo-model-id' }, model.id)),
-                    h('td', { className: 'ocgo-num' }, model.free ? 'Free' : fmtRate(model.rates.input)),
-                    h('td', { className: 'ocgo-num' }, model.free ? 'Free' : fmtRate(model.rates.output)),
-                    h('td', { className: 'ocgo-num' }, model.free ? 'Free' : fmtRate(model.rates.cacheRead)),
+                    h('td', { className: 'ocgo-num' }, model.free ? t('free') : fmtRate(model.rates.input)),
+                    h('td', { className: 'ocgo-num' }, model.free ? t('free') : fmtRate(model.rates.output)),
+                    h('td', { className: 'ocgo-num' }, model.free ? t('free') : fmtRate(model.rates.cacheRead)),
                     h('td', { className: 'ocgo-num' }, model.context ? fmtTokens(model.context) : '—'),
-                    h('td', { className: 'ocgo-num' }, model.maxTokens ? fmtTokens(model.maxTokens) : '—'),
-                    h('td', null,
-                      h('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap' } },
-                        model.free ? h(Pill, { tone: 'ok' }, 'Free') : null,
-                        model.peakFactor > 1 ? h(Pill, { tone: 'warn' }, `${model.peakFactor}× peak`) : null,
-                        model.vision ? h(Pill, { tone: 'idle' }, 'Vision') : null,
-                        model.reasoning ? h(Pill, { tone: 'idle' }, 'Reasoning') : null))))))),
-          filtered.length === 0 ? h('div', { className: 'ocgo-empty' }, 'No models match that search.') : null)
-          : null)
+                    h('td', { className: 'ocgo-num' }, model.maxTokens ? fmtTokens(model.maxTokens) : '—')))))),
+        h('p', { className: 'ocgo-note-text' }, t('modelsNote')))
     }
 
-    function Notes({ snapshot }) {
+    function AccountSection({ t, snapshot }) {
+      const sub = snapshot.subscription
+      const billing = snapshot.billing
+      // The summary already shows plan, price, status, and the renewal date.
+      const subscriptionRows = []
+      if (sub?.useBalance != null) {
+        subscriptionRows.push([t('extraUsageRow'), sub.useBalance ? t('on') : t('off')])
+      }
+
+      const advancedRows = []
+      if (sub) {
+        if (sub.renewalStopReason) advancedRows.push([t('cancelReason'), sub.renewalStopReason])
+        if (sub.resumability) advancedRows.push([t('resumability'), sub.resumability])
+        if (sub.nextPeriodPaid != null) advancedRows.push([t('nextPeriodPaid'), sub.nextPeriodPaid ? t('yes') : t('no')])
+        if (sub.renewalPending != null) advancedRows.push([t('renewalPending'), sub.renewalPending ? t('yes') : t('no')])
+        if (sub.upgrade?.amount != null) {
+          advancedRows.push([t('upgrade'), `${fmtUsd(sub.upgrade.amount)} ${sub.upgrade.currency}`])
+        }
+        if (sub.teams?.amount != null) {
+          const members = sub.teams.memberCount ? ` · ${t('members', { count: sub.teams.memberCount })}` : ''
+          advancedRows.push([t('teams'), `${fmtUsd(sub.teams.amount)} ${sub.teams.currency}${members}`])
+        }
+      }
+
+      const billingRows = []
+      if (billing) {
+        if (billing.mode) billingRows.push([t('billingMode'), billing.mode])
+        if (billing.balance != null) billingRows.push([t('balance'), fmtUsd(billing.balance)])
+        if (billing.available != null) billingRows.push([t('available'), fmtUsd(billing.available)])
+        if (billing.creditLimit != null) billingRows.push([t('creditLimit'), fmtUsd(billing.creditLimit)])
+        if (billing.canEnableAutoRecharge != null) {
+          billingRows.push([t('autoRecharge'), billing.canEnableAutoRecharge ? t('yes') : t('no')])
+        }
+        if (billing.canPurchaseCredits != null) {
+          billingRows.push([t('canPurchase'), billing.canPurchaseCredits ? t('yes') : t('no')])
+        }
+      }
+
+      const rowsView = (rows) => rows.map(([label, value], index) =>
+        h('div', { key: `${label}-${index}`, className: 'ocgo-kv' },
+          h('span', { className: 'ocgo-kv-key' }, label),
+          h('span', { className: 'ocgo-kv-val' }, String(value))))
+
       return h('section', { className: 'ocgo-section' },
         h('div', { className: 'ocgo-section-head' },
           h('div', null,
-            h('h2', { className: 'ocgo-section-title' }, 'Notes and data sources'),
-            h('p', { className: 'ocgo-section-sub' }, 'Everything here comes from OpenCode Go APIs'))),
-        snapshot.warnings?.length ? h('div', { style: { marginBottom: 10 } },
-          snapshot.warnings.map((warning) => h(Banner, { key: warning, tone: 'info' }, warning))) : null,
-        snapshot.errors?.length ? h('div', { style: { marginBottom: 10 } },
-          snapshot.errors.map((error) => h(Banner, { key: error, tone: 'error' }, error))) : null,
-        h('details', { className: 'ocgo-notes' },
-          h('summary', null, 'How these numbers are calculated'),
-          h('ul', null,
-            h('li', null, 'Console status: GET /console/api/go/status with your saved Bearer API key. Exact meters (limit/used microcents), product, renewal, cancel, useBalance, upgrade.'),
-            h('li', null, 'Billing: GET /console/api/billing/status with the same key. Balance, available, mode, purchase/auto-recharge flags.'),
-            h('li', null, 'Fallback: GET /zen/go/v1/usage gives percentage-only rolling/weekly/monthly when Console is unreachable.'),
-            h('li', null, 'Models: GET /zen/go/v1/models (authed) with public fallback. Per-M input/output/cache-read + context/max + tags.'),
-            h('li', null, 'Base allowance = largest single-model cap ($100 Go). Burn = base ÷ model cap. API % is already blended.'),
-            h('li', null, '5-hour window is rolling. Weekly resets Mon 00:00 UTC. Unused allowance does not roll over.'))),
-        h('div', { className: 'ocgo-footer' }, 'OpenCode Go panel · data refreshed on demand'))
+            h('h2', { className: 'ocgo-section-title' }, t('account')),
+            h('p', { className: 'ocgo-section-sub' }, t('accountSub')))),
+        h('div', { className: 'ocgo-account-grid' },
+          h('div', { className: 'ocgo-card' },
+            h('div', { className: 'ocgo-card-label' }, t('subscription')),
+            sub
+              ? (subscriptionRows.length > 0
+                ? rowsView(subscriptionRows)
+                : h('p', { className: 'ocgo-hint', style: { marginTop: 10 } }, t('noDetails')))
+              : h('p', { className: 'ocgo-hint', style: { marginTop: 10 } }, t('noSubscription')),
+            advancedRows.length > 0
+              ? h('details', { className: 'ocgo-inline-details' },
+                h('summary', null, t('moreDetails')),
+                h('div', { className: 'ocgo-details-body' }, rowsView(advancedRows)))
+              : null),
+          h('div', { className: 'ocgo-card' },
+            h('div', { className: 'ocgo-card-label' }, t('billing')),
+            billing
+              ? (billingRows.length > 0
+                ? rowsView(billingRows)
+                : h('p', { className: 'ocgo-hint', style: { marginTop: 10 } }, t('billingUnavailable')))
+              : h('p', { className: 'ocgo-hint', style: { marginTop: 10 } }, t('billingUnavailable')))))
     }
 
-    function PanelPage() {
-      const { snapshot, loading, error, reload, setSnapshot, setError } = useApi()
+    function KeySection({ t, snapshot, onChanged }) {
+      const configured = Boolean(snapshot?.auth?.key?.configured)
+      const form = useKeyForm(onChanged)
+      const [confirming, setConfirming] = useState(false)
+      const detail = form.error ? errorDetail(form.error) : null
+      const field = h('input', {
+        className: 'ocgo-input', type: 'password', autoComplete: 'off', spellCheck: false,
+        placeholder: t('newKeyPlaceholder'), value: form.value,
+        'aria-label': t('newKeyPlaceholder'),
+        onChange: (event) => form.setValue(event.target.value),
+      })
+      return h('section', { className: 'ocgo-section' },
+        h('div', { className: 'ocgo-section-head' },
+          h('div', null,
+            h('h2', { className: 'ocgo-section-title' }, t('keySection')),
+            h('p', { className: 'ocgo-section-sub' },
+              configured ? t('keySectionSaved') : t('keySectionMissing')))),
+        h('details', { className: 'ocgo-details', open: !configured },
+          h('summary', null, configured ? t('replaceKey') : t('saveKey')),
+          h('div', { className: 'ocgo-details-body' },
+            h('p', { className: 'ocgo-hint' }, t('keyStoredHint')),
+            h('form', { className: 'ocgo-form', onSubmit: form.submit },
+              field,
+              h('button', {
+                className: 'ocgo-btn ocgo-btn-primary', type: 'submit',
+                disabled: form.busy || !form.value.trim(),
+              }, form.busy ? t('saving') : configured ? t('replaceKey') : t('saveKey'))),
+            form.error
+              ? h('div', { className: 'ocgo-error' },
+                apiErrorText(form.error, t),
+                detail ? h('span', { className: 'ocgo-error-detail' }, detail) : null)
+              : null,
+            configured
+              ? h('div', { className: 'ocgo-key-actions' },
+                confirming
+                  ? [
+                    h('span', { key: 'confirm', className: 'ocgo-hint' }, t('confirmRemove')),
+                    h('button', {
+                      key: 'remove', className: 'ocgo-btn ocgo-btn-danger', type: 'button',
+                      disabled: form.removing, onClick: () => form.remove(),
+                    }, form.removing ? t('removing') : t('removeKey')),
+                    h('button', {
+                      key: 'cancel', className: 'ocgo-btn ocgo-btn-ghost', type: 'button',
+                      onClick: () => setConfirming(false),
+                    }, t('cancel')),
+                  ]
+                  : [
+                    h('button', {
+                      key: 'ask', className: 'ocgo-btn ocgo-btn-ghost ocgo-btn-danger', type: 'button',
+                      onClick: () => setConfirming(true),
+                    }, t('removeKey')),
+                    h('span', { key: 'hint', className: 'ocgo-hint' }, t('removeKeyHint')),
+                  ])
+              : null)))
+    }
+
+    function Notes({ t, snapshot }) {
+      const minutes = Math.max(1, Math.round((Number(snapshot.refreshSeconds) || 300) / 60))
+      return h('section', { className: 'ocgo-section' },
+        h('details', { className: 'ocgo-notes' },
+          h('summary', null, t('notes')),
+          h('ul', { className: 'ocgo-note-list' },
+            h('li', null, t('noteSource')),
+            h('li', null, t('noteWindows')),
+            h('li', null, t('noteAllowance')),
+            h('li', null, t('noteKey')))),
+        h('p', { className: 'ocgo-footer' }, t('footerRefresh', { minutes })))
+    }
+
+    function PanelPage(props) {
+      const t = props.t
+      const { snapshot, setSnapshot, loading, error, setError, reload } = useSnapshot()
       const now = useNow()
 
-      async function refresh() {
-        await reload(true)
-      }
-
-      function connected(next) {
+      const refresh = () => { void reload({ force: true }) }
+      const onChanged = (next) => {
         setSnapshot(next)
         setError(null)
       }
 
+      const header = h(Header, { t, snapshot, loading, onRefresh: refresh })
+
       if (!snapshot) {
-        return h(Shell, null,
-          h(Header, { snapshot: null, loading, onRefresh: refresh }),
-          loading
-            ? h('div', { style: { display: 'grid', gap: 12 } },
-              h('div', { className: 'ocgo-skeleton' }),
-              h('div', { className: 'ocgo-skeleton', style: { height: 140 } }))
-            : h(KeyManager, { snapshot: null, onConnected: connected, hero: true, error: error || 'The panel could not load OpenCode Go data.' }))
+        return h(Shell, null, header,
+          error
+            ? h('div', { className: 'ocgo-alerts' },
+              h('div', { className: 'ocgo-alert ocgo-alert-error', role: 'status' },
+                h('span', { className: 'ocgo-alert-icon' }, h(Glyph, { name: 'alert', size: 14 })),
+                h('div', { className: 'ocgo-alert-body' },
+                  h('p', { className: 'ocgo-alert-text' },
+                    error?.status === 401 || error?.status === 403 ? t('sessionExpired') : t('loadFailed')),
+                  errorDetail(error) ? h('span', { className: 'ocgo-error-detail' }, errorDetail(error)) : null,
+                  h('button', { className: 'ocgo-btn ocgo-btn-ghost', type: 'button', onClick: refresh }, t('retry')))))
+            : h(Skeleton))
       }
 
-      const critical = []
-      if (snapshot.subscription?.cancelAtPeriodEnd && snapshot.subscription.accessEndsAt) {
-        critical.push(h(Banner, { key: 'cancel', tone: 'warn' },
-          `This plan is cancelled and access ends ${fmtDate(snapshot.subscription.accessEndsAt)}${snapshot.subscription?.resumability ? ` (${snapshot.subscription.resumability})` : ''}.`))
-      }
-      if (snapshot.subscription?.needsPaymentMethod) {
-        critical.push(h(Banner, { key: 'pay', tone: 'error' },
-          'This subscription needs a payment method to resume. Add one in Console → Billing.'))
-      }
-      if (snapshot.subscription?.useBalance === false) {
-        critical.push(h(Banner, { key: 'balance', tone: 'info' },
-          'Extra usage is off: requests stop at the allowance instead of charging your balance.'))
-      }
-      (snapshot.meters || []).filter((m) => m.rateLimited).forEach((m) =>
-        critical.push(h(Banner, { key: `rl-${m.key}`, tone: 'error' }, `${m.label} is rate-limited.`)))
-      if (!snapshot.auth?.console?.configured) {
-        critical.push(h(Banner, { key: 'console', tone: 'info' },
-          'Showing percentage estimates. Save an API key (Usage:Read) for exact Console dollars.'))
-      }
-      if (snapshot.auth?.key?.error && snapshot.connected) {
-        critical.push(h(Banner, { key: 'keyerror', tone: 'warn' },
-          `Usage API: ${snapshot.auth.key.error}`))
-      }
+      const body = snapshot.connected
+        ? [
+          h(Alerts, { key: 'alerts', t, snapshot, error, onRetry: refresh }),
+          h(Summary, { key: 'summary', t, snapshot }),
+          h(MetersSection, { key: 'meters', t, snapshot, now }),
+          h(ModelsSection, { key: 'models', t, snapshot }),
+          h(AccountSection, { key: 'account', t, snapshot }),
+          h(KeySection, { key: 'key', t, snapshot, onChanged }),
+          h(Notes, { key: 'notes', t, snapshot }),
+        ]
+        : [
+          error
+            ? h('div', { key: 'error', className: 'ocgo-alerts' },
+              h('div', { className: 'ocgo-alert ocgo-alert-error', role: 'status' },
+                h('div', { className: 'ocgo-alert-body' },
+                  h('p', { className: 'ocgo-alert-text' }, apiErrorText(error, t)),
+                  errorDetail(error) ? h('span', { className: 'ocgo-error-detail' }, errorDetail(error)) : null,
+                  h('button', { className: 'ocgo-btn ocgo-btn-ghost', type: 'button', onClick: refresh }, t('retry')))))
+            : null,
+          h(ConnectScreen, { key: 'connect', t, onSaved: onChanged }),
+        ]
 
-      if (!snapshot.connected) {
-        return h(Shell, null,
-          h(Header, { snapshot, loading, onRefresh: refresh }),
-          error ? h(Banner, { tone: 'error' }, error) : null,
-          h(KeyManager, { snapshot, onConnected: connected, hero: true, error: error }))
-      }
-
-      return h(Shell, null,
-        h(Header, { snapshot, loading, onRefresh: refresh }),
-        error ? h(Banner, { tone: 'error' }, error) : null,
-        critical,
-        h(Hero, { snapshot, now }),
-        h('section', { className: 'ocgo-section' },
-          h('div', { className: 'ocgo-section-head' },
-            h('div', null,
-              h('h2', { className: 'ocgo-section-title' }, 'API usage windows'),
-              h('p', { className: 'ocgo-section-sub' }, 'Exact Console dollars when linked, else percentage estimates · reset countdowns and pace'))),
-          h('div', { className: 'ocgo-hero' },
-            (snapshot.meters || []).map((meter) => h(MeterCard, { key: meter.key, meter, baseAllowance: snapshot.allowance?.baseAllowance, now })))),
-        h(AllowanceSection, { snapshot }),
-        h(RatesSection, { snapshot }),
-        h(AccountSection, { snapshot }),
-        h(KeyManager, { snapshot, onConnected: connected }),
-        h(Notes, { snapshot }))
+      return h(Shell, null, header, body)
     }
 
     function PanelIcon({ size = 16, active = false }) {
@@ -1061,20 +1201,23 @@ window.__ModuleLoader__.load({
         width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
         'aria-hidden': true, style: { display: 'block' },
       },
-        h('circle', { cx: 12, cy: 12, r: 8.4, stroke: 'currentColor', strokeWidth: active ? 2 : 1.6, opacity: 0.9 }),
-        h('path', { d: 'M12 12l4.2-4.8', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round' }),
-        h('circle', { cx: 12, cy: 12, r: 1.55, fill: 'currentColor' }),
-        h('path', { d: 'M5.4 12a6.6 6.6 0 0 1 5-6.4', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', opacity: 0.35 }))
+      h('circle', { cx: 12, cy: 12, r: 8.4, stroke: 'currentColor', strokeWidth: active ? 2 : 1.6, opacity: 0.9 }),
+      h('path', { d: 'M12 12l4.2-4.8', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round' }),
+      h('circle', { cx: 12, cy: 12, r: 1.55, fill: 'currentColor' }),
+      h('path', { d: 'M5.4 12a6.6 6.6 0 0 1 5-6.4', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', opacity: 0.35 }))
     }
 
     return {
       inject: ['slots', 'locale'],
       apply(ctx) {
-        try {
-          ctx.locale.register(NS, dicts)
-        } catch {
-          // A hot reload can re-register the same namespace; keep the live dictionary.
-        }
+        ctx.effect(() => {
+          try {
+            return ctx.locale.register(NS, dicts)
+          } catch {
+            // A hot reload can re-register the namespace; keep the live dictionary.
+            return () => {}
+          }
+        }, 'opencode-go: dictionaries')
         const t = ctx.locale.bind(NS)
 
         ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({

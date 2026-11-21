@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "OpenCode Go",
-    "description": "OpenCode Go subscription status, model allowances, usage meters, and per-million-token rates."
+    "description": "OpenCode Go subscription status, usage meters, model catalog, and per-million-token rates."
   }
 }
