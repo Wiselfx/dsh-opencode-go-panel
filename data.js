@@ -12,7 +12,7 @@
 const DEFAULT_API_ORIGIN = 'https://opencode.ai'
 /** The panel's own credential record: `<package>/<id>` in the Harness record space. */
 const CREDENTIAL_RECORD = 'dsh-opencode-go-panel/api-key'
-const USER_AGENT = 'dsh-opencode-go-panel/1.3'
+const USER_AGENT = 'dsh-opencode-go-panel/1.3.1'
 const MICROCENTS_PER_USD = 100_000_000
 const DAY = 86_400_000
 const HOUR = 3_600_000
@@ -275,7 +275,67 @@ function usageMeters(usageDto) {
   }).filter(Boolean)
 }
 
-function normalizeModels(raw) {
+const UTC_DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+
+function clockMinutes(value) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || ''))
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null
+}
+
+function hourRangeMatches(range, minutes) {
+  if (!range || typeof range !== 'object') return true
+  const gte = clockMinutes(range.gte)
+  const gt = clockMinutes(range.gt)
+  const lte = clockMinutes(range.lte)
+  const lt = clockMinutes(range.lt)
+  if (gte != null && minutes < gte) return false
+  if (gt != null && minutes <= gt) return false
+  if (lte != null && minutes > lte) return false
+  if (lt != null && minutes >= lt) return false
+  return true
+}
+
+/** Evaluate the model API's `when` expression (UTC days and hour windows). */
+function whenMatches(when, at) {
+  if (!when || typeof when !== 'object') return true
+  const day = UTC_DAYS[at.getUTCDay()]
+  const minutes = at.getUTCHours() * 60 + at.getUTCMinutes()
+  const dayList = (list) => Array.isArray(list) ? list.map((entry) => String(entry).toLowerCase()) : null
+  if (Array.isArray(when.utc_days)) {
+    const days = dayList(when.utc_days)
+    if (!days.includes(day)) return false
+  } else if (when.utc_days && typeof when.utc_days === 'object') {
+    const included = dayList(when.utc_days.in)
+    const excluded = dayList(when.utc_days.not_in)
+    if (included && !included.includes(day)) return false
+    if (excluded && excluded.includes(day)) return false
+  }
+  if (when.utc_hours && !hourRangeMatches(when.utc_hours, minutes)) return false
+  if (Array.isArray(when.all) && !when.all.every((condition) => whenMatches(condition, at))) return false
+  if (Array.isArray(when.any) && !when.any.some((condition) => whenMatches(condition, at))) return false
+  return true
+}
+
+function multiplierFactor(multiplier) {
+  const factor = Number(multiplier?.factor)
+  return Number.isFinite(factor) && factor > 1 ? factor : null
+}
+
+/** Published peak factor and whether it applies at `at` (the API schedule is UTC). */
+function peakState(multipliers, at) {
+  if (!Array.isArray(multipliers)) return { peakFactor: null, peakActive: false }
+  let scheduled = null
+  let active = null
+  for (const multiplier of multipliers) {
+    const factor = multiplierFactor(multiplier)
+    if (factor === null) continue
+    scheduled = scheduled === null ? factor : Math.max(scheduled, factor)
+    if (whenMatches(multiplier.when, at)) active = active === null ? factor : Math.max(active, factor)
+  }
+  return { peakFactor: scheduled, peakActive: active !== null }
+}
+
+function normalizeModels(raw, at = new Date()) {
   return raw.map((model) => {
     const text = model?.cost?.text || {}
     const rates = {
@@ -283,7 +343,7 @@ function normalizeModels(raw) {
       output: numberOrNull(text.output?.price) ?? 0,
       cacheRead: numberOrNull(text.input?.cache?.read) ?? 0,
     }
-    const multiplier = Array.isArray(model?.cost?.multipliers) ? model.cost.multipliers[0] : null
+    const peak = peakState(model?.cost?.multipliers, at)
     return {
       id: String(model?.id || ''),
       name: typeof model?.name === 'string' && model.name ? model.name : String(model?.id || ''),
@@ -291,7 +351,8 @@ function normalizeModels(raw) {
       maxTokens: numberOrNull(model?.limit?.output),
       rates,
       free: rates.input === 0 && rates.output === 0,
-      peakFactor: numberOrNull(multiplier?.factor),
+      peakFactor: peak.peakFactor,
+      peakActive: peak.peakActive,
     }
   }).filter((model) => model.id)
 }
@@ -427,7 +488,7 @@ async function buildSnapshot(ctx, config) {
   if (catalog.source === 'public') warnings.push({ code: 'models-public' })
   if (catalog.data.length === 0) warnings.push({ code: 'catalog-empty' })
 
-  const models = normalizeModels(catalog.data)
+  const models = normalizeModels(catalog.data, new Date())
   const current = selectCurrentModel(ctx, config, models)
 
   if (!consoleResult.ok) {

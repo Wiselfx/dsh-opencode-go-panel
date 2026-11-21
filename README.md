@@ -16,13 +16,15 @@ OpenCode Go APIs on the Host; the browser never receives the API key.
   dollars, because OpenCode's percentage API does not expose a dollar pool.
 - **Model catalog and published rates** from the authenticated model API:
   per-million input, output, and cache-read prices, context window, maximum
-  output, and the peak-hour multiplier when one applies.
+  output, and the peak-hour multiplier when one applies. A model's multiplier
+  is evaluated against its UTC day/hour schedule, so the panel shows
+  **Off-peak** when no peak pricing is active and **N× peak now** when it is.
 - **Billing** from `GET /console/api/billing/status`: balance, available
   credit, mode, and auto-recharge/purchase flags.
 
-The model table is a plain catalog. OpenCode reports one blended allowance,
-not per-model spend or token totals, so the panel does not invent per-model
-dollar caps, burn rates, or token counts.
+The model table is a plain catalog of base prices. OpenCode reports one
+blended allowance, not per-model spend or token totals, so the panel does not
+invent per-model dollar caps, burn rates, or token counts.
 
 ## Install
 

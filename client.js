@@ -40,7 +40,8 @@ window.__ModuleLoader__.load({
         keySaved: 'Key saved',
         exactHint: 'Dollar amounts come from the Console status API.',
         percentageOnlyHint: 'Dollar amounts are unavailable because the Console status could not be read.',
-        peakHint: 'Peak-hour prices use this multiplier.',
+        peakNowHint: 'A peak multiplier applies now.',
+        offPeakHint: 'No peak multiplier is active; peak pricing applies only during the scheduled UTC hours.',
         keySection: 'API key',
         keySectionSaved: 'A key is stored in the Harness credential store.',
         keySectionMissing: 'No key is stored yet.',
@@ -93,10 +94,11 @@ window.__ModuleLoader__.load({
         context: 'Context',
         maxOut: 'Max out',
         free: 'Free',
-        peak: '{factor}× peak',
+        peakNow: '{factor}× peak now',
+        offPeak: 'Off-peak',
         noModels: 'OpenCode returned no models.',
         noModelsMatch: 'No model matches that search.',
-        modelsNote: 'Rates come from the OpenCode model catalog. OpenCode reports one blended allowance, not per-model spend or token totals.',
+        modelsNote: 'Rates are base prices from the OpenCode model catalog; an active peak multiplier applies on top. OpenCode reports one blended allowance, not per-model spend or token totals.',
         account: 'Account',
         accountSub: 'Subscription details and billing.',
         subscription: 'Subscription details',
@@ -166,7 +168,8 @@ window.__ModuleLoader__.load({
         keySaved: '密钥已保存',
         exactHint: '美元金额来自控制台状态 API。',
         percentageOnlyHint: '无法读取控制台状态，因此没有美元金额。',
-        peakHint: '高峰时段价格按此倍率计算。',
+        peakNowHint: '当前处于高峰时段，适用高峰倍率。',
+        offPeakHint: '当前不在高峰时段；高峰价仅在排定的 UTC 时段生效。',
         keySection: 'API 密钥',
         keySectionSaved: '密钥已保存在 Harness 凭据存储中。',
         keySectionMissing: '尚未保存密钥。',
@@ -219,10 +222,11 @@ window.__ModuleLoader__.load({
         context: '上下文',
         maxOut: '最大输出',
         free: '免费',
-        peak: '{factor}× 高峰',
+        peakNow: '当前 {factor}× 高峰',
+        offPeak: '非高峰',
         noModels: 'OpenCode 未返回模型。',
         noModelsMatch: '没有匹配该搜索的模型。',
-        modelsNote: '费率来自 OpenCode 模型目录。OpenCode 只提供一个混合配额，不提供按模型支出或 Token 总量。',
+        modelsNote: '表中为 OpenCode 模型目录的基础价格；高峰倍率生效时会在此基础上叠加。OpenCode 只提供一个混合配额，不提供按模型支出或 Token 总量。',
         account: '账户',
         accountSub: '订阅详情与账单。',
         subscription: '订阅详情',
@@ -906,7 +910,9 @@ window.__ModuleLoader__.load({
           ratesLine ? h('div', { className: 'ocgo-summary-sub' }, ratesLine) : null,
           current && current.peakFactor > 1
             ? h('div', { className: 'ocgo-summary-pills' },
-              h(Pill, { tone: 'warn' }, t('peak', { factor: current.peakFactor })))
+              current.peakActive
+                ? h(Pill, { tone: 'warn', title: t('peakNowHint') }, t('peakNow', { factor: current.peakFactor }))
+                : h(Pill, { tone: 'idle', title: t('offPeakHint') }, t('offPeak')))
             : null))
     }
 
@@ -994,7 +1000,9 @@ window.__ModuleLoader__.load({
                         h('span', { className: 'ocgo-model-name' }, model.name),
                         model.id === currentId ? h(Pill, { tone: 'ok' }, t('current')) : null,
                         model.peakFactor > 1
-                          ? h(Pill, { tone: 'warn', title: t('peakHint') }, t('peak', { factor: model.peakFactor }))
+                          ? (model.peakActive
+                            ? h(Pill, { tone: 'warn', title: t('peakNowHint') }, t('peakNow', { factor: model.peakFactor }))
+                            : h(Pill, { tone: 'idle', title: t('offPeakHint') }, t('offPeak')))
                           : null),
                       h('span', { className: 'ocgo-model-id' }, model.id)),
                     h('td', { className: 'ocgo-num' }, model.free ? t('free') : fmtRate(model.rates.input)),

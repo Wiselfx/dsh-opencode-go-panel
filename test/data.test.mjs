@@ -70,7 +70,16 @@ const MODELS = {
       limit: { context: 1000000, output: 384000 },
       cost: {
         text: { input: { price: 0.15, cache: { read: 0.003 } }, output: { price: 0.6 } },
-        multipliers: [{ factor: 2, when: {} }],
+        multipliers: [{
+          factor: 2,
+          when: {
+            utc_days: { in: ['mon', 'tue', 'wed', 'thu', 'fri'] },
+            any: [
+              { all: [{ utc_hours: { gte: '01:00' } }, { utc_hours: { lt: '04:00' } }] },
+              { all: [{ utc_hours: { gte: '06:00' } }, { utc_hours: { lt: '10:00' } }] },
+            ],
+          },
+        }],
       },
     },
     {
@@ -165,6 +174,7 @@ test('no stored key returns the connect state without reading the environment', 
 })
 
 test('Console status builds exact meters and the current model from the real data shape', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 10, 21, 10, 30, 0) })
   const calls = mockApi(t)
   const snapshot = await createProvider(createContext({ key: KEY }), {}).get()
 
@@ -192,6 +202,7 @@ test('Console status builds exact meters and the current model from the real dat
   assert.equal(deepseek.rates.output, 0.6)
   assert.equal(deepseek.rates.cacheRead, 0.003)
   assert.equal(deepseek.peakFactor, 2)
+  assert.equal(deepseek.peakActive, false, 'Saturday is outside the weekday peak schedule')
   assert.equal(deepseek.context, 1000000)
   assert.equal(deepseek.maxTokens, 384000)
 
@@ -207,6 +218,27 @@ test('Console status builds exact meters and the current model from the real dat
   assert.ok(calls.every((call) => call.url.startsWith('https://opencode.ai/')))
   assert.equal(calls.filter((call) => !call.auth).length, 1)
   assert.ok(calls.filter((call) => call.auth).every((call) => call.auth === `Bearer ${KEY}`))
+})
+
+test('a peak multiplier only applies inside its UTC schedule', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 10, 20, 0, 0, 0) })
+  mockApi(t)
+  const cases = [
+    ['2026-11-20T02:30:00.000Z', true, 'Friday inside 01:00-04:00'],
+    ['2026-11-20T05:00:00.000Z', false, 'Friday between windows'],
+    ['2026-11-20T06:00:00.000Z', true, 'Friday at the 06:00 boundary'],
+    ['2026-11-20T09:59:00.000Z', true, 'Friday inside 06:00-10:00'],
+    ['2026-11-20T10:00:00.000Z', false, 'Friday at the 10:00 boundary'],
+    ['2026-11-21T02:30:00.000Z', false, 'Saturday'],
+    ['2026-11-23T01:00:00.000Z', true, 'Monday at the 01:00 boundary'],
+    ['2026-11-23T00:59:00.000Z', false, 'Monday before 01:00'],
+  ]
+  for (const [iso, expected, label] of cases) {
+    t.mock.timers.setTime(Date.parse(iso))
+    const snapshot = await createProvider(createContext({ key: KEY }), {}).get(true)
+    const model = snapshot.models.find((candidate) => candidate.id === 'deepseek-v4.1-flash')
+    assert.equal(model.peakActive, expected, `${label} (${iso})`)
+  }
 })
 
 test('percentage-only fallback never invents dollar amounts', async (t) => {
