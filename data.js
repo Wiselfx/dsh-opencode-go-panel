@@ -14,7 +14,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 const DEFAULT_API_ORIGIN = 'https://opencode.ai'
-const USER_AGENT = 'dsh-opencode-go-panel/1.1'
+const USER_AGENT = 'dsh-opencode-go-panel/1.2'
 const MICROCENTS_PER_USD = 100_000_000
 const DAY = 86_400_000
 const HOUR = 3_600_000
