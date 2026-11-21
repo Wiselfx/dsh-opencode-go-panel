@@ -673,7 +673,13 @@ async function buildSnapshot(ctx, config) {
     warnings.push('No OpenCode Go API key was found. Save one to load the usage API.')
   }
   if (statusResult && !statusResult.ok && (consoleLogin || savedKeys.length)) {
-    errors.push(`Console status: HTTP ${statusResult.status || 'error'}${statusResult.text ? ` — ${statusResult.text}` : ''}`)
+    const code = Number(statusResult.status) || 0
+    const hint = code === 401
+      ? ' — key invalid/expired, paste a fresh key below'
+      : code === 403
+        ? ' — key lacks Console permission (need Usage:Read; owner/admin → Restricted; member default is Models-only)'
+        : (statusResult.text ? ` — ${statusResult.text}` : '')
+    errors.push(`Console status: HTTP ${code || 'error'}${hint}`)
   }
   if (!usageResult.ok && savedKeys.length) {
     errors.push(`Usage API: ${usageResult.error || 'unavailable'}`)

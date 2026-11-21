@@ -649,6 +649,61 @@ window.__ModuleLoader__.load({
             : null))
     }
 
+    function KeyManager({ snapshot, onConnected }) {
+      const [key, setKey] = useState('')
+      const [busy, setBusy] = useState(false)
+      const [localError, setLocalError] = useState(null)
+      async function submit(event) {
+        event.preventDefault()
+        if (!key.trim() || busy) return
+        setBusy(true)
+        setLocalError(null)
+        try {
+          const response = await fetch(`${API}/connect`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ apiKey: key.trim() }),
+          })
+          const body = await response.json().catch(() => null)
+          if (!response.ok || !body || body.ok === false) {
+            throw new Error(body?.error || `HTTP ${response.status}`)
+          }
+          setKey('')
+          onConnected(body)
+        } catch (cause) {
+          setLocalError(cause instanceof Error ? cause.message : String(cause))
+        } finally {
+          setBusy(false)
+        }
+      }
+      return h('section', { className: 'ocgo-section' },
+        h('div', { className: 'ocgo-section-head' },
+          h('div', null,
+            h('h2', { className: 'ocgo-section-title' }, 'API key'),
+            h('p', { className: 'ocgo-section-sub' },
+              snapshot?.auth?.key?.configured
+                ? `Key saved (${snapshot.auth.key.source || 'stored'}) · ${snapshot?.auth?.console?.configured ? `Console ${snapshot.auth.console.via || ''} linked` : 'Console not linked — paste a Usage:Read key below'}`
+                : 'No key saved — paste a Usage:Read key below'))),
+        h('div', { className: 'ocgo-card' },
+          h('form', { className: 'ocgo-form', onSubmit: submit },
+            h('input', {
+              className: 'ocgo-input',
+              type: 'password',
+              autoComplete: 'off',
+              spellCheck: false,
+              placeholder: 'oc_sk_… — paste new key to replace',
+              value: key,
+              onChange: (event) => setKey(event.target.value),
+              'aria-label': 'Replace OpenCode Go API key',
+            }),
+            h('button', { className: 'ocgo-btn ocgo-btn-primary', type: 'submit', disabled: busy || !key.trim() },
+              busy ? 'Saving…' : snapshot?.auth?.key?.configured ? 'Replace key' : 'Save key')),
+          h('div', { className: 'ocgo-form-hint' },
+            'Needs Usage:Read (owner/admin → Restricted). Member default keys (Models:Request only) give percentages but 403 on Console. ',
+            h('a', { href: 'https://opencode.ai/console/go', target: '_blank', rel: 'noreferrer', style: { color: 'var(--dsw-alias-brand-primary)' } }, 'Open Console → Go → API keys')),
+          (localError) ? h('div', { className: 'ocgo-error' }, localError) : null))
+    }
+
     function StatCard({ label, value, sub, children }) {
       return h('div', { className: 'ocgo-card' },
         h('div', { className: 'ocgo-stat-label' }, label),
@@ -1018,6 +1073,7 @@ window.__ModuleLoader__.load({
         h(AllowanceSection, { snapshot }),
         h(RatesSection, { snapshot }),
         h(AccountSection, { snapshot }),
+        h(KeyManager, { snapshot, onConnected: connected }),
         h(Notes, { snapshot }))
     }
 
