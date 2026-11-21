@@ -41,21 +41,18 @@ Or from the GitHub repository, install the bundle package through the Harness
 Plugin Manager and enable it. A page refresh is required after the first
 client bundle is installed.
 
-## Credentials
+## Credentials (key-only)
 
-The Host half resolves, in order:
+Nothing is read from the environment, Pi auth, OpenCode auth/db, or OAuth.
+The panel shows nothing until a key is saved.
 
-1. the Harness credential store (`OPENCODE_GO_API_KEY`),
-2. `OPENCODE_GO_API_KEY`, `OPENCODE_API_KEY`, `OPENCODE_ZEN_API_KEY` in the environment,
-3. the panel's own `~/.dsh/opencode-go/api-key` file,
-4. `~/.pi/agent/auth.json` (`opencode-go`),
-5. `~/.local/share/opencode/auth.json` (`opencode`).
-
-If no key is found, the panel shows a connect card and stores the pasted key in
-the Harness credential store. That key alone (Usage:Read) loads exact Console
-status (`/console/api/go/status`) + billing (`/console/api/billing/status`);
-a local OpenCode sign-in (`~/.local/share/opencode/opencode.db` OAuth) is
-used first when present, otherwise the panel falls back to the percentage usage API.
+1. Create a read-only API key: Console → Go → API keys.
+2. Paste it in the panel and hit Save. It is stored in the Harness
+   credential store (`OPENCODE_GO_API_KEY`), fallback to the panel's own
+   `~/.dsh/opencode-go/api-key` file. It is never sent to the browser.
+3. That key alone drives everything: exact Console status
+   (`/console/api/go/status`), billing (`/console/api/billing/status`),
+   percentage usage (`/zen/go/v1/usage`), and models.
 
 ## Data limitations
 

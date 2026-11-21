@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
         openConsole: 'Open console',
         updated: 'Updated {time}',
         connectTitle: 'Connect your OpenCode Go key',
-        connectBody: 'Paste an OpenCode API key (Console → Go → API keys, Usage:Read is enough). It is stored in the Harness credential store and used directly for exact Console dollars — no local sign-in needed.',
+        connectBody: 'Paste an OpenCode API key (Console → Go → API keys, Usage:Read is enough). It is stored in the Harness credential store and used directly for exact Console dollars.',
         connectPlaceholder: 'oc_…',
         connectAction: 'Save and connect',
         connecting: 'Connecting…',
@@ -120,8 +120,8 @@ window.__ModuleLoader__.load({
         reasoningTag: 'Reasoning',
         notesTitle: 'Notes and data sources',
         notesCalc: 'How these numbers are calculated',
-        note1: 'Subscription, renewal, and exact dollar meters come from the Console status API, via local sign-in (OAuth) or directly with your API key (Usage:Read).',
-        note2: 'OpenCode reports dollars and percentages, not token counts. Token totals are observed from Harness session logs and the local OpenCode database, so usage from other machines or clients is not included.',
+        note1: 'Subscription, renewal, and exact dollar meters come from the Console status API with your saved API key.',
+        note2: 'OpenCode reports dollars and percentages, not token counts. Nothing is read from local logs or databases.',
         note3: 'Your effective rate uses the plan price. The metered rate uses month-to-date Console spend. The list-value rate uses current model prices and your observed token mix.',
         note4: 'The 5-hour window is rolling. Weekly resets on Monday 00:00 UTC. Unused allowance does not roll over.',
         note5: 'Free models do not consume paid allowance. DeepSeek models have peak-hour multipliers; per-model rates in the catalog show the base price.',
@@ -241,7 +241,7 @@ window.__ModuleLoader__.load({
         reasoningTag: '推理',
         notesTitle: '说明与数据来源',
         notesCalc: '这些数字如何计算',
-        note1: '订阅、续费状态和精确美元计量来自控制台状态 API，可经本地登录 (OAuth) 或直接使用 API 密钥 (Usage:Read)。',
+        note1: '订阅、续费状态和精确美元计量来自控制台状态 API，使用你保存的 API 密钥。',
         note2: 'OpenCode 只提供美元和百分比，不提供 Token 数。Token 总量从 Harness 会话日志和本地 OpenCode 数据库观测，因此其他机器或客户端的用量不包含在内。',
         note3: '实际费率使用套餐价格。计量费率使用控制台本月支出。标价费率使用当前模型价格和你的 Token 结构。',
         note4: '5 小时窗口是滚动的。每周一 00:00 UTC 重置。未使用的配额不会结转。',
@@ -626,7 +626,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'ocgo-eyebrow' }, 'Connection'),
           h('h2', { className: 'ocgo-connect-title' }, 'Connect your OpenCode Go key'),
           h('p', { className: 'ocgo-connect-body' },
-            'Paste an OpenCode API key (Console → Go → API keys, Usage:Read is enough). It is stored in the Harness credential store and used directly for exact Console dollars — no local sign-in needed.'),
+            'Paste an OpenCode API key (Console → Go → API keys, Usage:Read is enough). It is stored in the Harness credential store and used directly for exact Console dollars.'),
           h('form', { className: 'ocgo-form', onSubmit: submit },
             h('input', {
               className: 'ocgo-input',
@@ -644,9 +644,7 @@ window.__ModuleLoader__.load({
             'Copy a key from the OpenCode Console under Go → API keys. ',
             h('a', { href: 'https://opencode.ai/console/go', target: '_blank', rel: 'noreferrer', style: { color: 'var(--dsw-alias-brand-primary)' } }, 'Open the Console')),
           (localError || error) ? h('div', { className: 'ocgo-error' }, localError || error) : null,
-          snapshot?.auth?.console?.configured && !snapshot?.auth?.key?.configured
-            ? h('div', { className: 'ocgo-form-hint' }, 'A Console sign-in was found. Usage may already load without a key; add one if it does not.')
-            : null))
+          null))
     }
 
     function KeyManager({ snapshot, onConnected }) {
@@ -719,7 +717,7 @@ window.__ModuleLoader__.load({
       const current = snapshot.currentModel
       const monthly = (snapshot.meters || []).find((m) => m.key === 'monthly')
       const planValue = subscription ? subscription.plan : '—'
-      const via = subscription?.dataSource === 'api-key' ? 'via API key' : subscription?.dataSource === 'oauth' ? 'via sign-in' : subscription?.source === 'usage' ? 'estimated' : ''
+      const via = subscription?.dataSource === 'api-key' ? 'via API key' : subscription?.source === 'usage' ? 'estimated' : ''
       const planSub = subscription
         ? `${fmtUsd(subscription.priceMonthly)} / month ${via}${billing && billing.balance != null ? ` · bal ${fmtUsd(billing.balance)}` : ''}`
         : 'Save an API key to load exact data'
@@ -889,7 +887,7 @@ window.__ModuleLoader__.load({
       }
       const subRows = [
         ['Plan', `${subscription.plan} · ${fmtUsd(subscription.priceMonthly)}/mo (${subscription.planId})`],
-        ['Source', subscription.dataSource === 'api-key' ? 'Console via API key (exact)' : subscription.dataSource === 'oauth' ? 'Console via sign-in (exact)' : `Console ${subscription.source}`],
+        ['Source', subscription.dataSource === 'api-key' ? 'Console via API key (exact)' : `Console ${subscription.source}`],
         ['Status', subscription.cancelAtPeriodEnd ? `Cancelling (ends ${fmtDate(subscription.accessEndsAt)})` : subscription.status],
         ['Period', fmtRange(subscription.accessStartsAt, subscription.accessEndsAt)],
         [subscription.cancelAtPeriodEnd ? 'Ends' : 'Renews', fmtDate(subscription.accessEndsAt)],
@@ -995,7 +993,7 @@ window.__ModuleLoader__.load({
         h('details', { className: 'ocgo-notes' },
           h('summary', null, 'How these numbers are calculated'),
           h('ul', null,
-            h('li', null, 'Console status: GET /console/api/go/status with Bearer API key (Usage:Read) or OAuth sign-in + x-org-id. Exact meters (limit/used microcents), product, renewal, cancel, useBalance, upgrade.'),
+            h('li', null, 'Console status: GET /console/api/go/status with your saved Bearer API key. Exact meters (limit/used microcents), product, renewal, cancel, useBalance, upgrade.'),
             h('li', null, 'Billing: GET /console/api/billing/status with the same key. Balance, available, mode, purchase/auto-recharge flags.'),
             h('li', null, 'Fallback: GET /zen/go/v1/usage gives percentage-only rolling/weekly/monthly when Console is unreachable.'),
             h('li', null, 'Models: GET /zen/go/v1/models (authed) with public fallback. Per-M input/output/cache-read + context/max + tags.'),

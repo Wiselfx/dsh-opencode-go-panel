@@ -113,8 +113,6 @@ const DEFAULT_CONFIG = {
   refreshSeconds: 300,
   plan: 'go',
   monthlyPriceUsd: null,
-  opencodeDb: null,
-  opencodeAuth: null,
   apiOrigin: DEFAULT_API_ORIGIN,
 }
 
@@ -151,14 +149,6 @@ function modelKey(value) {
   return String(value || '').toLowerCase().replace(/^[^/]+\//, '')
 }
 
-async function readJson(path) {
-  try {
-    return JSON.parse(await readFile(path, 'utf8'))
-  } catch {
-    return undefined
-  }
-}
-
 async function fileExists(path) {
   try {
     return (await stat(path)).isFile()
@@ -182,123 +172,37 @@ async function fetchJson(url, headers, timeoutMs = 15_000) {
   return { ok: response.ok, status: response.status, body, text: text.slice(0, 300) }
 }
 
-/** Credentials stored by the harness itself are the first choice. */
+/** The panel's own saved key only — no env, no other apps' auth, no OAuth.
+ *  Saved via POST /connect -> Harness credential store, fallback to the
+ *  panel's own ~/.dsh/opencode-go/api-key file. */
 async function resolveSavedKeys(ctx, config) {
   const found = []
-  const seen = new Set()
-  const add = (key, source) => {
-    if (typeof key !== 'string') return
-    const value = key.trim()
-    if (value.length < 8 || seen.has(value)) return
-    seen.add(value)
-    found.push({ key: value, source })
-  }
-
-  const refs = [config.apiKeyEnv, 'OPENCODE_GO_API_KEY', 'OPENCODE_API_KEY', 'OPENCODE_ZEN_API_KEY']
+  const ref = config.apiKeyEnv || 'OPENCODE_GO_API_KEY'
   const credentials = ctx.get?.('credentials')
   if (credentials?.resolve) {
-    for (const ref of [...new Set(refs.filter(Boolean))]) {
-      try {
-        const hit = await credentials.resolve(ref)
-        if (hit?.value) add(hit.value, `Saved key (${ref})`)
-      } catch {
-        // A missing provider or a malformed reference is not fatal.
+    try {
+      const hit = await credentials.resolve(ref)
+      if (hit?.value && typeof hit.value === 'string' && hit.value.trim().length >= 8) {
+        found.push({ key: hit.value.trim(), source: 'Saved key' })
+        return found
       }
+    } catch {
+      // Missing store entry just means no key saved yet.
     }
   }
-
-  for (const ref of refs) {
-    if (ref && process.env[ref]) add(process.env[ref], `Environment (${ref})`)
-  }
-
   const localPath = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'opencode-go', 'api-key')
   if (await fileExists(localPath)) {
     try {
-      add((await readFile(localPath, 'utf8')).trim(), 'Saved by this panel')
+      const value = (await readFile(localPath, 'utf8')).trim()
+      if (value.length >= 8) found.push({ key: value, source: 'Saved by this panel' })
     } catch {
       // Ignore unreadable optional storage.
     }
   }
-
-  const piAuth = await readJson(join(homedir(), '.pi', 'agent', 'auth.json'))
-  for (const id of ['opencode-go', 'opencode']) {
-    const record = piAuth?.[id]
-    if (record?.key) add(record.key, 'Pi sign-in')
-    if (record?.access) add(record.access, 'Pi sign-in')
-  }
-
-  const openCodeAuth = await readJson(join(homedir(), '.local', 'share', 'opencode', 'auth.json'))
-  for (const id of ['opencode-go', 'opencode']) {
-    const record = openCodeAuth?.[id]
-    if (record?.key) add(record.key, 'OpenCode sign-in')
-    if (record?.access) add(record.access, 'OpenCode sign-in')
-  }
-
   return found
 }
 
-/** The local OpenCode credential carries the workspace id the Console needs. */
-async function resolveConsole(ctx, config) {
-  const dbPath = config.opencodeDb || join(homedir(), '.local', 'share', 'opencode', 'opencode.db')
-  try {
-    const { DatabaseSync } = await import('node:sqlite')
-    const db = new DatabaseSync(dbPath, { readOnly: true })
-    try {
-      const rows = db.prepare(
-        "select value from credential where integration_id in ('opencode', 'opencode-go') order by active desc",
-      ).all()
-      for (const row of rows) {
-        let value
-        try {
-          value = JSON.parse(row.value)
-        } catch {
-          continue
-        }
-        if (!value || value.type !== 'oauth') continue
-        const token = value.access
-        const orgID = value.metadata?.orgID
-        const expires = Number(value.expires)
-        if (typeof token !== 'string' || token.length < 8) continue
-        if (Number.isFinite(expires) && expires > 0 && expires < Date.now() + 60_000) continue
-        if (typeof orgID !== 'string' || !orgID.startsWith('org_')) continue
-        return {
-          access: token,
-          orgID,
-          server: typeof value.metadata?.server === 'string' ? value.metadata.server : 'https://opencode.ai/console',
-          workspaceName: typeof value.metadata?.orgName === 'string' ? value.metadata.orgName : null,
-          source: 'OpenCode local sign-in',
-        }
-      }
-    } finally {
-      db.close()
-    }
-  } catch {
-    // node:sqlite may be unavailable, or OpenCode may not be installed.
-  }
-
-  const authPath = config.opencodeAuth || join(homedir(), '.local', 'share', 'opencode', 'auth.json')
-  const auth = await readJson(authPath)
-  for (const id of ['opencode', 'opencode-go']) {
-    const value = auth?.[id]
-    if (!value || value.type !== 'oauth') continue
-    const token = value.access
-    const orgID = value.metadata?.orgID
-    const expires = Number(value.expires)
-    if (typeof token !== 'string' || token.length < 8) continue
-    if (Number.isFinite(expires) && expires > 0 && expires < Date.now() + 60_000) continue
-    if (typeof orgID !== 'string' || !orgID.startsWith('org_')) continue
-    return {
-      access: token,
-      orgID,
-      server: typeof value.metadata?.server === 'string' ? value.metadata.server : 'https://opencode.ai/console',
-      workspaceName: typeof value.metadata?.orgName === 'string' ? value.metadata.orgName : null,
-      source: 'OpenCode local sign-in',
-    }
-  }
-
-  return undefined
-}
-
+/** Percentage usage with the panel key. */
 async function fetchUsageForKeys(keys, config) {
   let lastError = null
   for (const candidate of keys) {
@@ -318,7 +222,7 @@ async function fetchUsageForKeys(keys, config) {
   return { ok: false, candidate: keys[0], error: lastError || 'No API key found' }
 }
 
-/** Console billing balance directly with an API key. */
+/** Console billing balance with the panel key. */
 async function fetchBillingForKeys(keys, config) {
   let lastError = null
   for (const candidate of keys) {
@@ -527,34 +431,37 @@ function snapshotError(error) {
 async function buildSnapshot(ctx, config) {
   const warnings = []
   const errors = []
+  // Key-only: the user pastes a read-only API key; nothing else is read.
   const savedKeys = await resolveSavedKeys(ctx, config)
-  const consoleLogin = await resolveConsole(ctx, config)
 
-  const modelHeaders = consoleLogin
-    ? { authorization: `Bearer ${consoleLogin.access}`, 'x-org-id': consoleLogin.orgID }
-    : savedKeys[0]
-      ? { authorization: `Bearer ${savedKeys[0].key}` }
-      : {}
+  if (!savedKeys.length) {
+    return {
+      ok: true,
+      version: 2,
+      fetchedAt: Date.now(),
+      connected: false,
+      auth: {
+        key: { configured: false, source: null, error: null },
+        console: { configured: false, via: null, source: null, workspaceName: null },
+      },
+      subscription: null,
+      billing: null,
+      meters: [],
+      allowance: null,
+      currentModel: null,
+      models: [],
+      modelScope: 'catalog',
+      availableCount: null,
+      warnings: [],
+      errors: [],
+    }
+  }
 
-  const [oauthStatusResult, apiStatusResult, oauthBillingResult, apiBillingResult, usageResult, publicModels, workspaceModels] = await Promise.all([
-    consoleLogin
-      ? fetchJson(`${consoleLogin.server.replace(/\/$/, '')}/api/go/status`, {
-        authorization: `Bearer ${consoleLogin.access}`,
-        'x-org-id': consoleLogin.orgID,
-      }).catch((error) => ({ ok: false, status: 0, error: snapshotError(error) }))
-      : Promise.resolve(null),
-    savedKeys.length
-      ? fetchStatusForKeys(savedKeys, config).catch((error) => ({ ok: false, status: 0, error: snapshotError(error) }))
-      : Promise.resolve(null),
-    consoleLogin
-      ? fetchJson(`${consoleLogin.server.replace(/\/$/, '')}/api/billing/status`, {
-        authorization: `Bearer ${consoleLogin.access}`,
-        'x-org-id': consoleLogin.orgID,
-      }).catch(() => ({ ok: false, status: 0 }))
-      : Promise.resolve(null),
-    savedKeys.length
-      ? fetchBillingForKeys(savedKeys, config).catch(() => ({ ok: false, status: 0 }))
-      : Promise.resolve(null),
+  const modelHeaders = { authorization: `Bearer ${savedKeys[0].key}` }
+
+  const [apiStatusResult, apiBillingResult, usageResult, publicModels, workspaceModels] = await Promise.all([
+    fetchStatusForKeys(savedKeys, config).catch((error) => ({ ok: false, status: 0, error: snapshotError(error) })),
+    fetchBillingForKeys(savedKeys, config).catch(() => ({ ok: false, status: 0 })),
     fetchUsageForKeys(savedKeys, config),
     fetchModels(config, {}).catch(() => ({ data: [], authenticated: false })),
     modelHeaders.authorization
@@ -568,10 +475,8 @@ async function buildSnapshot(ctx, config) {
     ? publicModels
     : (workspaceModels || { data: [], authenticated: false })
 
-  const statusResult = oauthStatusResult?.ok
-    ? oauthStatusResult
-    : (apiStatusResult?.ok ? apiStatusResult : (oauthStatusResult || apiStatusResult))
-  const statusSource = oauthStatusResult?.ok ? 'oauth' : (apiStatusResult?.ok ? 'api-key' : null)
+  const statusResult = apiStatusResult
+  const statusSource = apiStatusResult?.ok ? 'api-key' : null
   const statusDto = statusResult?.ok ? statusResult.body : null
   const plan = planFor(statusDto?.product || config.plan, config, statusDto?.teamsUpgradePrice?.memberCount || 1)
   const meterList = statusDto
@@ -608,7 +513,7 @@ async function buildSnapshot(ctx, config) {
       monthlyUsed,
       monthlyRemaining: monthlyLimit != null && monthlyUsed != null ? Math.max(0, monthlyLimit - monthlyUsed) : null,
       includedValueMultiple: plan.priceMonthly > 0 && monthlyLimit != null ? monthlyLimit / plan.priceMonthly : null,
-      workspaceName: consoleLogin?.workspaceName || null,
+      workspaceName: null,
       upgrade: statusDto.upgradePrice ? {
         amount: usdFromMicroCents(statusDto.upgradePrice.amountMicroCents),
         currency: String(statusDto.upgradePrice.currency || 'usd').toUpperCase(),
@@ -648,14 +553,12 @@ async function buildSnapshot(ctx, config) {
       workspaceName: null,
       upgrade: null,
     }
-    warnings.push('OpenCode sign-in and API-key Console status were not found, so renewal state and exact spend come from the percentage usage API.')
+    warnings.push('Console status was not found for this key, so renewal state and exact spend come from the percentage usage API.')
   }
 
-  const billingDto = (oauthBillingResult?.ok ? oauthBillingResult.body : null)
-    || (apiBillingResult?.ok ? apiBillingResult.body : null)
-    || null
+  const billingDto = (apiBillingResult?.ok ? apiBillingResult.body : null) || null
   const billing = billingDto ? {
-    source: oauthBillingResult?.ok ? 'oauth' : 'api-key',
+    source: 'api-key',
     mode: billingDto.mode || billingDto.billingMode || null,
     balance: usdFromMicroCents(billingDto.balanceMicroCents),
     available: usdFromMicroCents(billingDto.availableMicroCents),
@@ -665,14 +568,8 @@ async function buildSnapshot(ctx, config) {
   } : null
   if (subscription && statusSource) subscription.dataSource = statusSource
 
-  const consoleEffective = Boolean(consoleLogin) || statusSource === 'api-key'
-  if (!consoleEffective) {
-    warnings.push('Sign in to OpenCode on this machine to unlock exact Console billing data.')
-  }
-  if (!savedKeys.length) {
-    warnings.push('No OpenCode Go API key was found. Save one to load the usage API.')
-  }
-  if (statusResult && !statusResult.ok && (consoleLogin || savedKeys.length)) {
+  const consoleEffective = statusSource === 'api-key'
+  if (statusResult && !statusResult.ok) {
     const code = Number(statusResult.status) || 0
     const hint = code === 401
       ? ' — key invalid/expired, paste a fresh key below'
@@ -749,8 +646,8 @@ async function buildSnapshot(ctx, config) {
       console: {
         configured: consoleEffective,
         via: statusSource || null,
-        source: consoleLogin?.source || (statusSource === 'api-key' ? (`API key (${apiStatusResult?.candidate?.source || 'saved key'})`) : null),
-        workspaceName: consoleLogin?.workspaceName || null,
+        source: statusSource === 'api-key' ? 'API key' : null,
+        workspaceName: null,
       },
     },
     subscription,
