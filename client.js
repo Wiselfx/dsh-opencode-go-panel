@@ -82,6 +82,26 @@ window.__ModuleLoader__.load({
         left: 'left',
         ofLimit: 'of {limit}',
         ofPool: 'of the API pool',
+        usage: 'Usage history',
+        usageSub: 'Official workspace export; may include other clients · UTC',
+        usageRange: 'Usage range',
+        rangeToday: 'Today',
+        rangeMonth: 'This month',
+        range90d: 'Last 90 days',
+        usageLoading: 'Loading usage…',
+        usageTokens: 'Tokens',
+        usageValue: 'Usage amount',
+        usageRequests: 'Requests',
+        usageInput: 'Input',
+        usageOutput: 'Output',
+        usageCacheRead: 'Cache read',
+        usageCacheWrite: 'Cache write',
+        usageCache: 'Cache',
+        usageTotal: 'Total',
+        usageCoverage: '{from} – {to} · {days} days',
+        usageNoData: 'No usage was recorded for this range.',
+        usageLimitNote: 'Official daily totals may lag. OpenCode exports at most 90 days of usage history, so six-month and all-time totals are unavailable.',
+        usageValueNote: 'Usage amount is OpenCode’s official value for these requests; Go usage counts against the subscription allowance, not an extra charge.',
         models: 'Models',
         modelColumn: 'Model',
         modelsSub: '{count} models with published rates',
@@ -145,6 +165,12 @@ window.__ModuleLoader__.load({
         warnRateLimited: '{window} is rate limited.',
         warnModelsPublic: 'The workspace model list could not be read, so the public catalog is shown.',
         warnCatalogEmpty: 'OpenCode returned no models, so per-model rates are unavailable.',
+        usageErrorPermission: 'The saved key cannot read OpenCode usage history.',
+        usageErrorRateLimited: 'OpenCode rate-limited the usage request. Try again shortly.',
+        usageErrorNetwork: 'Could not reach OpenCode for usage history.',
+        usageErrorInvalid: 'OpenCode returned an unreadable usage export.',
+        usageErrorUpstream: 'OpenCode could not provide usage history.',
+        usageErrorNoKey: 'Save an API key to load usage history.',
         unknownError: 'Something went wrong.',
         sessionExpired: 'The page is no longer authorized. Reload and try again.',
         footerRefresh: 'Refreshes every {minutes} min',
@@ -210,6 +236,26 @@ window.__ModuleLoader__.load({
         left: '剩余',
         ofLimit: '共 {limit}',
         ofPool: '占 API 池',
+        usage: '用量历史',
+        usageSub: '工作区官方导出，可能包含其他客户端 · UTC',
+        usageRange: '用量范围',
+        rangeToday: '今天',
+        rangeMonth: '本月',
+        range90d: '最近 90 天',
+        usageLoading: '正在加载用量…',
+        usageTokens: 'Token',
+        usageValue: '用量金额',
+        usageRequests: '请求',
+        usageInput: '输入',
+        usageOutput: '输出',
+        usageCacheRead: '缓存读取',
+        usageCacheWrite: '缓存写入',
+        usageCache: '缓存',
+        usageTotal: '总计',
+        usageCoverage: '{from} – {to} · {days} 天',
+        usageNoData: '该范围内没有用量记录。',
+        usageLimitNote: '官方每日汇总可能有延迟。OpenCode 最多提供 90 天用量导出，因此无法显示六个月或全部历史。',
+        usageValueNote: '用量金额是 OpenCode 对这些请求的官方价值；Go 用量计入订阅配额，不是额外收费。',
         models: '模型',
         modelColumn: '模型',
         modelsSub: '{count} 个模型，含公开费率',
@@ -273,6 +319,12 @@ window.__ModuleLoader__.load({
         warnRateLimited: '{window} 已限流。',
         warnModelsPublic: '无法读取工作区模型列表，已显示公开目录。',
         warnCatalogEmpty: 'OpenCode 未返回模型，无法显示按模型费率。',
+        usageErrorPermission: '保存的密钥无法读取 OpenCode 用量历史。',
+        usageErrorRateLimited: 'OpenCode 对用量请求进行了限流，请稍后重试。',
+        usageErrorNetwork: '无法连接 OpenCode 读取用量历史。',
+        usageErrorInvalid: 'OpenCode 返回了无法解析的用量导出。',
+        usageErrorUpstream: 'OpenCode 无法提供用量历史。',
+        usageErrorNoKey: '请保存 API 密钥以加载用量历史。',
         unknownError: '出现未知错误。',
         sessionExpired: '页面已失去授权，请刷新后重试。',
         footerRefresh: '每 {minutes} 分钟刷新一次',
@@ -462,6 +514,43 @@ window.__ModuleLoader__.load({
     }
     .ocgo-error-detail { display: block; margin-top: 2px; color: var(--dsw-alias-label-secondary); }
     .ocgo-key-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--dsw-alias-border-l1); }
+    .ocgo-tabs {
+      display: inline-flex; gap: 2px; padding: 2px;
+      border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-layer-2);
+    }
+    .ocgo-tab {
+      height: 24px; padding: 0 10px; border: 0; border-radius: var(--dsw-radius-sm);
+      background: transparent; color: var(--dsw-alias-label-secondary);
+      font: inherit; font-size: 12px; line-height: 18px; white-space: nowrap; cursor: pointer;
+    }
+    .ocgo-tab:active { background: var(--dsw-alias-interactive-bg-active); }
+    .ocgo-tab:focus-visible {
+      outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+      outline-offset: 1px;
+    }
+    @media (hover: hover) {
+      .ocgo-tab:hover { color: var(--dsw-alias-label-primary); }
+    }
+    .ocgo-tab-active {
+      background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary);
+    }
+    .ocgo-usage-stats {
+      display: grid; gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+    }
+    .ocgo-usage-value {
+      margin-top: 6px; font-size: 22px; line-height: 1.2; font-weight: 550;
+      letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+    }
+    .ocgo-usage-parts {
+      display: flex; flex-wrap: wrap; gap: 6px 18px;
+      margin-top: 14px; padding-top: 12px;
+      border-top: 1px solid var(--dsw-alias-border-l1);
+      font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary);
+    }
+    .ocgo-usage-part { display: inline-flex; align-items: baseline; gap: 6px; }
+    .ocgo-usage-part-value { color: var(--dsw-alias-label-primary); font-variant-numeric: tabular-nums; }
+    .ocgo-usage-coverage { margin: 12px 0 0; font-size: 11.5px; line-height: 17px; color: var(--dsw-alias-label-caption); }
     .ocgo-notes { border: 1px solid var(--dsw-alias-border-l1); border-radius: var(--dsw-radius-lg); background: var(--dsw-alias-bg-layer-1); padding: 12px 16px; }
     .ocgo-notes > summary { cursor: pointer; font-size: 12.5px; line-height: 18px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
     .ocgo-notes[open] > summary { color: var(--dsw-alias-label-primary); }
@@ -543,6 +632,17 @@ window.__ModuleLoader__.load({
       }
     }
 
+    function fmtUtcDay(day) {
+      if (typeof day !== 'string' || !day) return '—'
+      try {
+        return new Intl.DateTimeFormat(undefined, {
+          month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+        }).format(Date.parse(`${day}T00:00:00Z`))
+      } catch {
+        return day
+      }
+    }
+
     function fmtDateTime(ts) {
       const n = asNumber(ts)
       if (n == null) return '—'
@@ -583,6 +683,20 @@ window.__ModuleLoader__.load({
 
     function errorDetail(error) {
       return typeof error?.detail === 'string' && error.detail ? error.detail : null
+    }
+
+    const USAGE_ERROR_KEYS = {
+      USAGE_PERMISSION: 'usageErrorPermission',
+      USAGE_RATE_LIMITED: 'usageErrorRateLimited',
+      USAGE_NETWORK: 'usageErrorNetwork',
+      USAGE_INVALID: 'usageErrorInvalid',
+      USAGE_UPSTREAM: 'usageErrorUpstream',
+      NO_KEY: 'usageErrorNoKey',
+    }
+
+    function usageErrorText(error, t) {
+      const key = error?.code ? USAGE_ERROR_KEYS[error.code] : undefined
+      return key ? t(key) : t('unknownError')
     }
 
     function dataErrorText(entry, t) {
@@ -754,6 +868,148 @@ window.__ModuleLoader__.load({
       }
 
       return { value, setValue, busy, removing, error, submit, remove }
+    }
+
+    const USAGE_RANGE_KEYS = [['today', 'rangeToday'], ['month', 'rangeMonth'], ['90d', 'range90d']]
+
+    function useUsage(refreshToken) {
+      const [range, setRange] = useState('month')
+      const [report, setReport] = useState(null)
+      const [loading, setLoading] = useState(true)
+      const [error, setError] = useState(null)
+      const [retryToken, setRetryToken] = useState(0)
+
+      useEffect(() => {
+        let alive = true
+        setLoading(true)
+        setError(null)
+        const params = new URLSearchParams({ range })
+        if (refreshToken > 0 || retryToken > 0) params.set('refresh', '1')
+        fetch(`${API}/usage?${params.toString()}`, {
+          headers: { accept: 'application/json' },
+          cache: 'no-store',
+        })
+          .then(async (response) => {
+            const body = await response.json().catch(() => null)
+            if (!response.ok || !body || body.ok === false) throw failureOf(body, response.status)
+            if (alive) {
+              setReport(body)
+              setLoading(false)
+            }
+          })
+          .catch((cause) => {
+            if (alive) {
+              setError(cause instanceof Error ? cause : new Error(String(cause)))
+              setLoading(false)
+            }
+          })
+        return () => { alive = false }
+      }, [range, refreshToken, retryToken])
+
+      return {
+        range,
+        setRange,
+        report,
+        loading,
+        error,
+        retry: () => setRetryToken((value) => value + 1),
+      }
+    }
+
+    function RangeTabs({ t, range, onChange }) {
+      return h('div', { className: 'ocgo-tabs', role: 'group', 'aria-label': t('usageRange') },
+        USAGE_RANGE_KEYS.map(([id, key]) => h('button', {
+          key: id,
+          type: 'button',
+          className: cx('ocgo-tab', range === id && 'ocgo-tab-active'),
+          'aria-pressed': range === id,
+          onClick: () => onChange(id),
+        }, t(key))))
+    }
+
+    function UsageReport({ t, report }) {
+      const totals = report.totals
+      const coverage = report.coverage
+      const hasData = coverage.days > 0
+      const parts = [
+        ['usageInput', totals.inputTokens],
+        ['usageOutput', totals.outputTokens],
+        ['usageCacheRead', totals.cacheReadTokens],
+        ['usageCacheWrite', totals.cacheWriteTokens],
+      ]
+      return [
+        h('div', { key: 'summary', className: 'ocgo-card' },
+          h('div', { className: 'ocgo-usage-stats' },
+            h('div', null,
+              h('div', { className: 'ocgo-summary-label' }, t('usageTokens')),
+              h('div', { className: 'ocgo-usage-value' }, fmtTokens(totals.tokens))),
+            h('div', null,
+              h('div', { className: 'ocgo-summary-label' }, t('usageValue')),
+              h('div', { className: 'ocgo-usage-value' }, fmtUsd(totals.costUsd))),
+            h('div', null,
+              h('div', { className: 'ocgo-summary-label' }, t('usageRequests')),
+              h('div', { className: 'ocgo-usage-value' }, fmtInt(totals.requests)))),
+          h('div', { className: 'ocgo-usage-parts' }, parts.map(([key, value]) =>
+            h('span', { key, className: 'ocgo-usage-part' },
+              t(key), h('span', { className: 'ocgo-usage-part-value' }, fmtTokens(value))))),
+          h('p', { className: 'ocgo-usage-coverage' }, hasData
+            ? t('usageCoverage', {
+              from: fmtUtcDay(coverage.from),
+              to: fmtUtcDay(coverage.to),
+              days: coverage.days,
+            })
+            : t('usageNoData')),
+          h('p', { className: 'ocgo-hint', style: { marginTop: 8 } }, t('usageValueNote')),
+          h('p', { className: 'ocgo-hint', style: { marginTop: 4 } }, t('usageLimitNote'))),
+        report.byModel.length > 0
+          ? h('div', { key: 'table', className: 'ocgo-table-wrap', style: { marginTop: 12 } },
+            h('table', { className: 'ocgo-table' },
+              h('thead', null,
+                h('tr', null,
+                  h('th', null, t('modelColumn')),
+                  h('th', { className: 'ocgo-num' }, t('usageRequests')),
+                  h('th', { className: 'ocgo-num' }, t('usageInput')),
+                  h('th', { className: 'ocgo-num' }, t('usageOutput')),
+                  h('th', { className: 'ocgo-num' }, t('usageCache')),
+                  h('th', { className: 'ocgo-num' }, t('usageTotal')),
+                  h('th', { className: 'ocgo-num' }, t('usageValue')))),
+              h('tbody', null, report.byModel.map((row) => h('tr', { key: `${row.provider}/${row.model}` },
+                h('td', null,
+                  h('span', { className: 'ocgo-model-name' }, row.model),
+                  row.provider && row.provider !== 'opencode'
+                    ? h('span', { className: 'ocgo-model-id' }, row.provider)
+                    : null),
+                h('td', { className: 'ocgo-num' }, fmtInt(row.requests)),
+                h('td', { className: 'ocgo-num' }, fmtTokens(row.inputTokens)),
+                h('td', { className: 'ocgo-num' }, fmtTokens(row.outputTokens)),
+                h('td', { className: 'ocgo-num' }, fmtTokens(row.cacheReadTokens + row.cacheWriteTokens)),
+                h('td', { className: 'ocgo-num' }, fmtTokens(row.tokens)),
+                h('td', { className: 'ocgo-num' }, fmtUsd(row.costUsd)))))))
+          : null,
+      ]
+    }
+
+    function UsageSection({ t, refreshToken }) {
+      const usage = useUsage(refreshToken)
+      const detail = usage.error ? errorDetail(usage.error) : null
+      return h('section', { className: 'ocgo-section' },
+        h('div', { className: 'ocgo-section-head' },
+          h('div', null,
+            h('h2', { className: 'ocgo-section-title' }, t('usage')),
+            h('p', { className: 'ocgo-section-sub' }, t('usageSub'))),
+          h(RangeTabs, { t, range: usage.range, onChange: usage.setRange })),
+        usage.loading
+          ? h('div', { className: 'ocgo-card ocgo-empty' }, t('usageLoading'))
+          : usage.error
+            ? h('div', { className: 'ocgo-card' },
+              h('div', { className: 'ocgo-error' },
+                usageErrorText(usage.error, t),
+                detail ? h('span', { className: 'ocgo-error-detail' }, detail) : null),
+              h('div', { style: { marginTop: 10 } },
+                h('button', { className: 'ocgo-btn', type: 'button', onClick: usage.retry }, t('retry'))))
+            : usage.report
+              ? h(UsageReport, { t, report: usage.report })
+              : null)
     }
 
     function Shell({ children }) {
@@ -1156,11 +1412,17 @@ window.__ModuleLoader__.load({
       const t = props.t
       const { snapshot, setSnapshot, loading, error, setError, reload } = useSnapshot()
       const now = useNow()
+      const [refreshToken, setRefreshToken] = useState(0)
+      const [credentialEpoch, setCredentialEpoch] = useState(0)
 
-      const refresh = () => { void reload({ force: true }) }
+      const refresh = () => {
+        setRefreshToken((value) => value + 1)
+        void reload({ force: true })
+      }
       const onChanged = (next) => {
         setSnapshot(next)
         setError(null)
+        setCredentialEpoch((value) => value + 1)
       }
 
       const header = h(Header, { t, snapshot, loading, onRefresh: refresh })
@@ -1184,6 +1446,7 @@ window.__ModuleLoader__.load({
           h(Alerts, { key: 'alerts', t, snapshot, error, onRetry: refresh }),
           h(Summary, { key: 'summary', t, snapshot }),
           h(MetersSection, { key: 'meters', t, snapshot, now }),
+          h(UsageSection, { key: `usage-${credentialEpoch}`, t, refreshToken }),
           h(ModelsSection, { key: 'models', t, snapshot }),
           h(AccountSection, { key: 'account', t, snapshot }),
           h(KeySection, { key: 'key', t, snapshot, onChanged }),

@@ -12,11 +12,18 @@
 const DEFAULT_API_ORIGIN = 'https://opencode.ai'
 /** The panel's own credential record: `<package>/<id>` in the Harness record space. */
 const CREDENTIAL_RECORD = 'dsh-opencode-go-panel/api-key'
-const USER_AGENT = 'dsh-opencode-go-panel/1.3.1'
+const USER_AGENT = 'dsh-opencode-go-panel/1.4.0'
 const MICROCENTS_PER_USD = 100_000_000
 const DAY = 86_400_000
 const HOUR = 3_600_000
 const MIN_REFRESH_SECONDS = 60
+const USAGE_CACHE_MS = 60_000
+const USAGE_MAX_BYTES = 16 * 1024 * 1024
+const USAGE_RANGES = new Set(['today', 'month', '90d'])
+const USAGE_COLUMNS = [
+  'day', 'provider', 'model', 'requests', 'input_tokens', 'output_tokens',
+  'cache_read_tokens', 'cache_write_5m_tokens', 'cache_write_1h_tokens', 'cost_micro_cents',
+]
 
 /** Plan names and monthly prices. Dollar meters themselves always come from the API. */
 const PLANS = {
@@ -456,6 +463,203 @@ function emptySnapshot(config) {
   }
 }
 
+function utcDay(ms) {
+  return new Date(ms).toISOString().slice(0, 10)
+}
+
+/** RFC 4180 rows, including quoted fields with commas, CRLF and doubled quotes. */
+function csvRecords(text) {
+  const csv = text.replace(/^\uFEFF/, '')
+  if (!csv || csv.includes('\u0000')) return null
+  const records = []
+  let row = []
+  let field = ''
+  let quoted = false
+  let ended = false
+  for (let index = 0; index < csv.length; index++) {
+    const char = csv[index]
+    ended = false
+    if (quoted) {
+      if (char === '"') {
+        if (csv[index + 1] === '"') { field += '"'; index++ } else quoted = false
+      } else field += char
+      continue
+    }
+    if (char === '"') { quoted = true; continue }
+    if (char === ',') { row.push(field); field = ''; continue }
+    if (char === '\r' || char === '\n') {
+      if (char === '\r') {
+        if (csv[index + 1] !== '\n') return null
+        index++
+      }
+      row.push(field)
+      if (row.some((value) => value !== '')) records.push(row)
+      row = []
+      field = ''
+      ended = true
+      continue
+    }
+    field += char
+  }
+  if (quoted) return null
+  if (!ended) {
+    row.push(field)
+    if (row.some((value) => value !== '')) records.push(row)
+  }
+  return records
+}
+
+function csvInteger(value) {
+  const text = String(value ?? '').trim()
+  if (!/^\d{1,15}$/.test(text)) return null
+  const number = Number(text)
+  return Number.isSafeInteger(number) ? number : null
+}
+
+function parseUsageCsv(text) {
+  const records = csvRecords(text)
+  if (!records || records.length === 0) throw new PanelApiError('USAGE_INVALID', 502)
+  const header = records[0].map((column) => column.trim())
+  const columns = new Map(header.map((column, index) => [column, index]))
+  if (USAGE_COLUMNS.some((column) => !columns.has(column))) {
+    throw new PanelApiError('USAGE_INVALID', 502)
+  }
+  const rows = []
+  for (const fields of records.slice(1)) {
+    if (fields.length < header.length) continue
+    const get = (column) => fields[columns.get(column)]
+    const day = get('day').trim()
+    const provider = get('provider').trim().slice(0, 200)
+    const model = get('model').trim().slice(0, 200)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !provider || !model) continue
+    const requests = csvInteger(get('requests'))
+    const inputTokens = csvInteger(get('input_tokens'))
+    const outputTokens = csvInteger(get('output_tokens'))
+    const cacheReadTokens = csvInteger(get('cache_read_tokens'))
+    const cacheWrite5m = csvInteger(get('cache_write_5m_tokens'))
+    const cacheWrite1h = csvInteger(get('cache_write_1h_tokens'))
+    const costMicroCents = csvInteger(get('cost_micro_cents'))
+    if ([requests, inputTokens, outputTokens, cacheReadTokens, cacheWrite5m, cacheWrite1h, costMicroCents]
+      .some((value) => value === null)) continue
+    rows.push({
+      day,
+      provider,
+      model,
+      requests,
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens: cacheWrite5m + cacheWrite1h,
+      costMicroCents,
+    })
+  }
+  return rows
+}
+
+async function fetchUsageRows(config, key) {
+  const url = `${config.apiOrigin}/console/api/v2/usage/export?range=90d`
+  let response
+  try {
+    response = await fetch(url, {
+      headers: {
+        ...authorization(key),
+        accept: 'text/csv',
+        'accept-encoding': 'identity',
+        'user-agent': USER_AGENT,
+      },
+      redirect: 'error',
+      signal: AbortSignal.timeout(30_000),
+    })
+  } catch (error) {
+    throw new PanelApiError('USAGE_NETWORK', 502, errorMessage(error))
+  }
+  if (!response.ok) {
+    const code = response.status === 401 || response.status === 403
+      ? 'USAGE_PERMISSION'
+      : response.status === 429 ? 'USAGE_RATE_LIMITED' : 'USAGE_UPSTREAM'
+    throw new PanelApiError(code, 502, `HTTP ${response.status}`)
+  }
+  if (!/^text\/csv(?:\s*;|$)/i.test(response.headers.get('content-type') || '')) {
+    throw new PanelApiError('USAGE_INVALID', 502)
+  }
+  let text
+  try {
+    text = await response.text()
+  } catch (error) {
+    throw new PanelApiError('USAGE_NETWORK', 502, errorMessage(error))
+  }
+  if (!text || Buffer.byteLength(text) > USAGE_MAX_BYTES) {
+    throw new PanelApiError('USAGE_INVALID', 502)
+  }
+  return parseUsageCsv(text)
+}
+
+function emptyUsageTotals() {
+  return {
+    requests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    tokens: 0,
+    costUsd: 0,
+  }
+}
+
+function addUsageTotals(target, row) {
+  target.requests += row.requests
+  target.inputTokens += row.inputTokens
+  target.outputTokens += row.outputTokens
+  target.cacheReadTokens += row.cacheReadTokens
+  target.cacheWriteTokens += row.cacheWriteTokens
+  target.costUsd += row.costMicroCents / MICROCENTS_PER_USD
+}
+
+function finishUsageTotals(totals) {
+  totals.tokens = totals.inputTokens + totals.outputTokens + totals.cacheReadTokens + totals.cacheWriteTokens
+  return totals
+}
+
+function buildUsageReport(rows, range, now = Date.now()) {
+  const today = utcDay(now)
+  const from = range === 'today'
+    ? today
+    : range === 'month' ? `${today.slice(0, 8)}01` : utcDay(now - 89 * DAY)
+  const selected = rows.filter((row) => row.day >= from && row.day <= today)
+  const totals = emptyUsageTotals()
+  const byModel = new Map()
+  const days = new Set()
+  let firstDay = null
+  let lastDay = null
+  for (const row of selected) {
+    addUsageTotals(totals, row)
+    days.add(row.day)
+    firstDay = firstDay === null || row.day < firstDay ? row.day : firstDay
+    lastDay = lastDay === null || row.day > lastDay ? row.day : lastDay
+    const id = JSON.stringify([row.provider, row.model])
+    let model = byModel.get(id)
+    if (!model) {
+      model = { provider: row.provider, model: row.model, ...emptyUsageTotals() }
+      byModel.set(id, model)
+    }
+    addUsageTotals(model, row)
+  }
+  finishUsageTotals(totals)
+  return {
+    range,
+    generatedAt: now,
+    from,
+    to: today,
+    apiLimitDays: 90,
+    coverage: { from: firstDay, to: lastDay, days: days.size },
+    totals,
+    byModel: [...byModel.values()]
+      .map(finishUsageTotals)
+      .sort((left, right) => right.costUsd - left.costUsd
+        || left.model.localeCompare(right.model)),
+  }
+}
+
 async function buildSnapshot(ctx, config) {
   const stored = await readStoredKey(ctx)
   if (!stored.key) return emptySnapshot(config)
@@ -526,11 +730,18 @@ export function createProvider(ctx, rawConfig = {}) {
   let inflight = null
   let inflightGeneration = 0
   let generation = 0
+  let usageRows = null
+  let usageRowsAt = 0
+  let usageInflight = null
+  let usageInflightGeneration = 0
 
-  /** A credential change invalidates every snapshot built before it. */
+  /** A credential change invalidates every snapshot and usage report built before it. */
   function invalidate() {
     cache = null
     cacheUntil = 0
+    usageRows = null
+    usageRowsAt = 0
+    usageInflight = null
     generation += 1
   }
 
@@ -586,5 +797,35 @@ export function createProvider(ctx, rawConfig = {}) {
     return get(true)
   }
 
-  return { get, connect, disconnect }
+  /** Official workspace usage history: one 90-day export, filtered to the requested range. */
+  async function getUsage(range = 'month', force = false) {
+    const selected = typeof range === 'string' ? range : 'month'
+    if (!USAGE_RANGES.has(selected)) throw new PanelApiError('INVALID_RANGE', 400)
+    const stored = await readStoredKey(ctx)
+    if (!stored.key) throw new PanelApiError('NO_KEY', 400)
+    const now = Date.now()
+    if (!force && usageRows && now - usageRowsAt < USAGE_CACHE_MS) {
+      return buildUsageReport(usageRows, selected, now)
+    }
+    const buildGeneration = generation
+    if (!usageInflight || usageInflightGeneration !== buildGeneration) {
+      const task = fetchUsageRows(config, stored.key)
+        .then((rows) => {
+          if (buildGeneration === generation) {
+            usageRows = rows
+            usageRowsAt = Date.now()
+          }
+          return rows
+        })
+        .finally(() => {
+          if (usageInflight === task) usageInflight = null
+        })
+      usageInflight = task
+      usageInflightGeneration = buildGeneration
+    }
+    const rows = await usageInflight
+    return buildUsageReport(rows, selected, Date.now())
+  }
+
+  return { get, connect, disconnect, getUsage }
 }

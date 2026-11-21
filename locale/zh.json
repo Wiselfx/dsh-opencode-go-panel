@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "OpenCode Go",
-    "description": "OpenCode Go 订阅状态、用量计量、模型目录与每百万 Token 费率。"
+    "description": "OpenCode Go 订阅状态、用量计量、用量历史、模型目录与每百万 Token 费率。"
   }
 }

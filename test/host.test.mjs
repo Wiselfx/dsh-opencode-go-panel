@@ -46,12 +46,12 @@ function createHarness({ configured = false, rejection } = {}) {
   return { routes, calls, configured }
 }
 
-function request({ method = 'GET', body = null, contentType = null } = {}) {
+function request({ method = 'GET', body = null, contentType = null, url = '/_dsh/opencode-go/status' } = {}) {
   const headers = {}
   if (contentType) headers['content-type'] = contentType
   return {
     method,
-    url: '/_dsh/opencode-go/status',
+    url,
     headers,
     async *[Symbol.asyncIterator]() {
       if (body !== null) yield Buffer.from(body)
@@ -78,7 +78,7 @@ async function invoke(routes, path, options) {
   const route = routes.get(path)
   assert.ok(route, `route ${path}`)
   const res = response()
-  await route.handler(request(options), res)
+  await route.handler(request({ ...options, url: options?.url || path }), res)
   return { status: res.statusCode, headers: res.headers, body: JSON.parse(res.body) }
 }
 
@@ -116,6 +116,24 @@ test('connect requires POST, JSON, and a valid body', async () => {
   assert.equal(invalid.status, 400)
   assert.equal(invalid.body.error, 'INVALID_JSON')
   assert.equal(calls.modified, 0)
+})
+
+test('usage route requires a saved key and a valid range', async () => {
+  const { routes } = createHarness()
+  const missingKey = await invoke(routes, '/_dsh/opencode-go/usage', {
+    url: '/_dsh/opencode-go/usage?range=month',
+  })
+  assert.equal(missingKey.status, 400)
+  assert.equal(missingKey.body.error, 'NO_KEY')
+  const invalidRange = await invoke(routes, '/_dsh/opencode-go/usage', {
+    url: '/_dsh/opencode-go/usage?range=6m',
+  })
+  assert.equal(invalidRange.status, 400)
+  assert.equal(invalidRange.body.error, 'INVALID_RANGE')
+  const wrongMethod = await invoke(routes, '/_dsh/opencode-go/usage', {
+    method: 'POST', url: '/_dsh/opencode-go/usage?range=month',
+  })
+  assert.equal(wrongMethod.status, 405)
 })
 
 test('disconnect removes the panel record only through POST', async () => {

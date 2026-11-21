@@ -21,10 +21,15 @@ OpenCode Go APIs on the Host; the browser never receives the API key.
   **Off-peak** when no peak pricing is active and **N× peak now** when it is.
 - **Billing** from `GET /console/api/billing/status`: balance, available
   credit, mode, and auto-recharge/purchase flags.
+- **Usage history** from the official workspace export
+  (`GET /console/api/v2/usage/export?range=90d`): requests, input/output/cache
+  tokens, and OpenCode's exact usage amount, grouped by model, with **Today**,
+  **This month**, and **Last 90 days** ranges. Daily totals may lag.
 
-The model table is a plain catalog of base prices. OpenCode reports one
-blended allowance, not per-model spend or token totals, so the panel does not
-invent per-model dollar caps, burn rates, or token counts.
+The model table is a plain catalog of base prices, not a per-model quota. The
+separate Usage section reports the workspace's per-model tokens and usage
+amount from OpenCode's official export. The panel never invents per-model
+dollar caps, burn rates, or token counts.
 
 ## Install
 
@@ -61,11 +66,18 @@ OpenCode.
 
 ## Data limitations
 
-- OpenCode exposes one normalized percentage for all models, not per-model
-  spend or token totals. The panel deliberately does not reconstruct tokens
-  from local session logs.
+- The quota windows expose one normalized percentage for all models, not
+  per-model spend. Per-model tokens and usage amounts come only from the
+  official usage export, never from local session logs.
 - Without the Console status API, only percentages and the model catalog are
   available; dollar amounts are omitted rather than estimated.
+- OpenCode's usage export covers at most 90 days. Six-month and all-time usage
+  history is not available from the API, so the panel does not fabricate it.
+  Request logs retain only 30 days and are not used for the report.
+- The exported CSV contains per-user fields; the Host aggregates them and never
+  sends user names, ids, or raw rows to the browser. The reported amount is
+  OpenCode's official usage value for those requests; Go usage counts against
+  the subscription allowance rather than an extra charge.
 - The plan price is configuration (`monthlyPriceUsd`, defaulting to the listed
   Go price) because the status API does not return it.
 

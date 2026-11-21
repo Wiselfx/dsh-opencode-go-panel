@@ -49,6 +49,16 @@ const USAGE = {
   },
 }
 
+const USAGE_CSV = [
+  'day,user_type,user_id,user_name,provider,model,requests,input_tokens,output_tokens,cache_read_tokens,cache_write_5m_tokens,cache_write_1h_tokens,cost_micro_cents,cost_usd',
+  '2026-11-21,user,user_1,"Doe, Jane",opencode,deepseek-v4.1-flash,10,1000,2000,3000,40,60,250000000,2.50',
+  '2026-11-21,user,user_2,Bob,opencode,glm-5.3,5,500,1000,0,0,0,100000000,1.00',
+  '2026-11-20,user,user_1,"Doe, Jane",opencode,deepseek-v4.1-flash,2,100,200,300,0,0,50000000,0.50',
+  '2026-10-15,user,user_1,Bob,opencode,glm-5.3,7,700,800,0,0,0,70000000,0.70',
+  '2026-09-01,user,user_1,Bob,opencode,kimi-k3,1,10,20,0,0,0,1000000,0.01',
+  '',
+].join('\r\n')
+
 const BILLING = {
   billingMode: 'prepaid',
   mode: 'pay-as-you-go',
@@ -130,6 +140,7 @@ function createContext({ key = null, withStore = true } = {}) {
 /** Mock the four OpenCode endpoints; each status is configurable per test. */
 function mockApi(t, {
   status = 200, usage = 200, models = 200, authedModels = 200, modelData = MODELS.data,
+  usageExport = 200, usageCsv = USAGE_CSV,
 } = {}) {
   const calls = []
   t.mock.method(globalThis, 'fetch', async (input, init = {}) => {
@@ -138,6 +149,11 @@ function mockApi(t, {
     calls.push({ url, auth, method: init.method || 'GET' })
     if (url.endsWith('/console/api/go/status')) {
       return status === 200 ? json(STATUS) : json({ error: 'console unavailable' }, status)
+    }
+    if (url.includes('/console/api/v2/usage/export')) {
+      return usageExport === 200
+        ? new Response(usageCsv, { status: 200, headers: { 'content-type': 'text/csv; charset=utf-8' } })
+        : json({ error: 'usage export unavailable' }, usageExport)
     }
     if (url.endsWith('/console/api/billing/status')) {
       return status === 200 ? json(BILLING) : json({ error: 'billing unavailable' }, status)
@@ -392,6 +408,92 @@ test('a credential change never serves a snapshot built with the old key', async
   const cached = await provider.get()
   assert.equal(cached.meters.find((meter) => meter.key === 'monthly').used, 20)
   assert.equal(ctx.records.get(RECORD).key, newKey)
+})
+
+test('official usage export aggregates tokens and amount by model and range', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 10, 21, 10, 30, 0) })
+  mockApi(t)
+  const provider = createProvider(createContext({ key: KEY }), {})
+
+  const month = await provider.getUsage('month')
+  assert.equal(month.range, 'month')
+  assert.deepEqual(month.totals, {
+    requests: 17,
+    inputTokens: 1600,
+    outputTokens: 3200,
+    cacheReadTokens: 3300,
+    cacheWriteTokens: 100,
+    tokens: 8200,
+    costUsd: 4,
+  })
+  assert.deepEqual(month.coverage, { from: '2026-11-20', to: '2026-11-21', days: 2 })
+  assert.deepEqual(month.byModel.map((row) => [row.model, row.requests, row.tokens, row.costUsd]), [
+    ['deepseek-v4.1-flash', 12, 6700, 3],
+    ['glm-5.3', 5, 1500, 1],
+  ])
+  // Personal fields from the CSV never reach the report.
+  assert.doesNotMatch(JSON.stringify(month), /Doe|Jane|Bob|user_1|user_2|user_name/)
+
+  const today = await provider.getUsage('today')
+  assert.deepEqual(today.totals, {
+    requests: 15,
+    inputTokens: 1500,
+    outputTokens: 3000,
+    cacheReadTokens: 3000,
+    cacheWriteTokens: 100,
+    tokens: 7600,
+    costUsd: 3.5,
+  })
+  assert.deepEqual(today.coverage, { from: '2026-11-21', to: '2026-11-21', days: 1 })
+
+  const ninety = await provider.getUsage('90d')
+  assert.equal(ninety.totals.requests, 25)
+  assert.ok(Math.abs(ninety.totals.costUsd - 4.71) < 1e-9)
+  assert.deepEqual(ninety.byModel.map((row) => row.model), ['deepseek-v4.1-flash', 'glm-5.3', 'kimi-k3'])
+  assert.deepEqual(ninety.coverage, { from: '2026-09-01', to: '2026-11-21', days: 4 })
+})
+
+test('usage history caches one export and refreshes on demand', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 10, 21, 10, 30, 0) })
+  const calls = mockApi(t)
+  const provider = createProvider(createContext({ key: KEY }), {})
+  await provider.getUsage('month')
+  await provider.getUsage('today')
+  let exports = calls.filter((call) => call.url.includes('/v2/usage/export')).length
+  assert.equal(exports, 1)
+  await provider.getUsage('month', true)
+  exports = calls.filter((call) => call.url.includes('/v2/usage/export')).length
+  assert.equal(exports, 2)
+})
+
+test('usage history rejects invalid ranges and reports export failures', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 10, 21, 10, 30, 0) })
+  mockApi(t, { usageExport: 403 })
+  const provider = createProvider(createContext({ key: KEY }), {})
+  await assert.rejects(
+    () => provider.getUsage('6m'),
+    (error) => error instanceof PanelApiError && error.code === 'INVALID_RANGE',
+  )
+  await assert.rejects(
+    () => provider.getUsage('month'),
+    (error) => error instanceof PanelApiError && error.code === 'USAGE_PERMISSION',
+  )
+})
+
+test('usage history rejects an unreadable CSV and requires a key', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 10, 21, 10, 30, 0) })
+  mockApi(t, { usageCsv: 'not,a,valid,header\r\n1,2,3,4\r\n' })
+  const provider = createProvider(createContext({ key: KEY }), {})
+  await assert.rejects(
+    () => provider.getUsage('month'),
+    (error) => error instanceof PanelApiError && error.code === 'USAGE_INVALID',
+  )
+
+  const empty = createProvider(createContext(), {})
+  await assert.rejects(
+    () => empty.getUsage('month'),
+    (error) => error instanceof PanelApiError && error.code === 'NO_KEY',
+  )
 })
 
 test('refresh seconds are clamped and sent to the client', async (t) => {

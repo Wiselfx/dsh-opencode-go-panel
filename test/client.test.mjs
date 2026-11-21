@@ -169,6 +169,36 @@ function setup() {
   }
 }
 
+const USAGE_REPORT = {
+  ok: true,
+  range: 'month',
+  generatedAt: Date.now(),
+  from: '2026-11-01',
+  to: '2026-11-21',
+  apiLimitDays: 90,
+  coverage: { from: '2026-11-20', to: '2026-11-21', days: 2 },
+  totals: {
+    requests: 17,
+    inputTokens: 1600,
+    outputTokens: 3200,
+    cacheReadTokens: 3300,
+    cacheWriteTokens: 100,
+    tokens: 8200,
+    costUsd: 4,
+  },
+  byModel: [{
+    provider: 'opencode',
+    model: 'DeepSeek V4.1 Flash 1017',
+    requests: 12,
+    inputTokens: 1100,
+    outputTokens: 2200,
+    cacheReadTokens: 3300,
+    cacheWriteTokens: 100,
+    tokens: 6700,
+    costUsd: 3,
+  }],
+}
+
 const SNAPSHOT = {
   ok: true,
   version: 3,
@@ -221,7 +251,7 @@ const SNAPSHOT = {
 }
 
 test('the connected view renders plan, windows, models, account, and key copy', () => {
-  const client = loadClient([SNAPSHOT, false, null])
+  const client = loadClient([SNAPSHOT, false, null, Date.now(), 0, 0, 'month', USAGE_REPORT, false, null, 0])
   const registrations = []
   let t = (key) => key
   const ctx = {
@@ -259,6 +289,13 @@ test('the connected view renders plan, windows, models, account, and key copy', 
     'Off-peak',
     '5-hour window is rate limited',
     'workspace model list could not be read',
+    'Usage history',
+    'Today',
+    'This month',
+    'Last 90 days',
+    'Usage amount',
+    '$4.00',
+    '8.2K',
   ]
   for (const expected of expectedCopy) {
     assert.ok(html.includes(expected), `expected rendered copy: ${expected}`)

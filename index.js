@@ -10,6 +10,7 @@ export const inject = ['webServer', 'connection']
 const STATUS_PATH = '/_dsh/opencode-go/status'
 const CONNECT_PATH = '/_dsh/opencode-go/connect'
 const DISCONNECT_PATH = '/_dsh/opencode-go/disconnect'
+const USAGE_PATH = '/_dsh/opencode-go/usage'
 const MAX_BODY_BYTES = 16_384
 
 function sendJson(res, status, body) {
@@ -115,6 +116,26 @@ export function apply(ctx, config = {}) {
       }
     },
   }), 'opencode-go: connect route')
+
+  ctx.effect(() => webServer.register({
+    kind: 'exact',
+    path: USAGE_PATH,
+    async handler(req, res) {
+      if (!authorize(req, res)) return
+      if (req.method !== 'GET') {
+        sendJson(res, 405, { ok: false, error: 'METHOD_NOT_ALLOWED' })
+        return
+      }
+      try {
+        const url = new URL(req.url || USAGE_PATH, 'http://localhost')
+        const range = url.searchParams.get('range') || 'month'
+        const report = await provider.getUsage(range, url.searchParams.get('refresh') === '1')
+        sendJson(res, 200, { ok: true, ...report })
+      } catch (error) {
+        sendJson(res, rejectionStatus(error), failureBody(error))
+      }
+    },
+  }), 'opencode-go: usage route')
 
   ctx.effect(() => webServer.register({
     kind: 'exact',
