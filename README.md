@@ -46,9 +46,11 @@ client bundle is installed.
 Nothing is read from the environment, Pi auth, OpenCode auth/db, or OAuth.
 The panel shows nothing until a key is saved.
 
-1. Create a read-only API key: Console → Go → API keys.
-2. Paste it in the panel and hit Save. It is stored in the Harness
-   credential store (`OPENCODE_GO_API_KEY`), fallback to the panel's own
+1. Create a read-only API key: Console → Go → API keys (Usage:Read is enough).
+2. Paste it in the panel and hit Save. It is stored securely in the Harness
+   credential store under the panel's own isolated name
+   (`OPENCODE_GO_PANEL_API_KEY`) — never the shared `OPENCODE_GO_API_KEY`
+   other apps use — with fallback to the panel's own
    `~/.dsh/opencode-go/api-key` file. It is never sent to the browser.
 3. That key alone drives everything: exact Console status
    (`/console/api/go/status`), billing (`/console/api/billing/status`),

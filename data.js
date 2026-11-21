@@ -14,6 +14,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 const DEFAULT_API_ORIGIN = 'https://opencode.ai'
+const PANEL_CREDENTIAL = 'OPENCODE_GO_PANEL_API_KEY'
 const USER_AGENT = 'dsh-opencode-go-panel/1.2'
 const MICROCENTS_PER_USD = 100_000_000
 const DAY = 86_400_000
@@ -108,7 +109,6 @@ const MODEL_ALLOWANCES = {
 }
 
 const DEFAULT_CONFIG = {
-  apiKeyEnv: 'OPENCODE_GO_API_KEY',
   providers: ['opencode-go'],
   refreshSeconds: 300,
   plan: 'go',
@@ -172,12 +172,12 @@ async function fetchJson(url, headers, timeoutMs = 15_000) {
   return { ok: response.ok, status: response.status, body, text: text.slice(0, 300) }
 }
 
-/** The panel's own saved key only — no env, no other apps' auth, no OAuth.
- *  Saved via POST /connect -> Harness credential store, fallback to the
- *  panel's own ~/.dsh/opencode-go/api-key file. */
+/** The panel's own isolated key only — no env, no other apps' auth, no OAuth.
+ *  Stored under PANEL_CREDENTIAL (never the shared OPENCODE_GO_API_KEY),
+ *  fallback to the panel's own ~/.dsh/opencode-go/api-key file. */
 async function resolveSavedKeys(ctx, config) {
   const found = []
-  const ref = config.apiKeyEnv || 'OPENCODE_GO_API_KEY'
+  const ref = PANEL_CREDENTIAL
   const credentials = ctx.get?.('credentials')
   if (credentials?.resolve) {
     try {
@@ -692,7 +692,7 @@ export function createProvider(ctx, rawConfig = {}) {
     let stored = false
     if (credentials?.set) {
       try {
-        await credentials.set(config.apiKeyEnv, value)
+        await credentials.set(PANEL_CREDENTIAL, value)
         stored = true
       } catch {
         // Fall through to the panel's private file when no writable store exists.

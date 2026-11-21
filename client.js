@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
         openConsole: 'Open console',
         updated: 'Updated {time}',
         connectTitle: 'Connect your OpenCode Go key',
-        connectBody: 'Paste an OpenCode API key (Console → Go → API keys, Usage:Read is enough). It is stored in the Harness credential store and used directly for exact Console dollars.',
+        connectBody: 'Needs a read-only API key from OpenCode Go (Console → Go → API keys, Usage:Read is enough). It is stored securely and used directly for exact Console dollars.',
         connectPlaceholder: 'oc_…',
         connectAction: 'Save and connect',
         connecting: 'Connecting…',
@@ -141,7 +141,7 @@ window.__ModuleLoader__.load({
         openConsole: '打开控制台',
         updated: '更新于 {time}',
         connectTitle: '连接 OpenCode Go 密钥',
-        connectBody: '粘贴 OpenCode API 密钥（控制台 → Go → API 密钥，有 Usage:Read 权限即可）。密钥保存在 Harness 凭据库中，直接用于获取精确的 Console 美元用量，不会显示在此页面。',
+        connectBody: '需要 OpenCode Go 的只读 API 密钥（控制台 → Go → API 密钥，有 Usage:Read 权限即可）。密钥会被安全存储，直接用于获取精确的 Console 美元用量，不会显示在此页面。',
         connectPlaceholder: 'oc_…',
         connectAction: '保存并连接',
         connecting: '连接中…',
@@ -627,44 +627,42 @@ window.__ModuleLoader__.load({
       return { key, setKey, busy, localError, submit }
     }
 
-    function ConnectView({ snapshot, onConnected, error }) {
+    function KeyManager({ snapshot, onConnected, hero, error }) {
       const { key, setKey, busy, localError, submit } = useKeyForm(onConnected)
+      if (hero) {
+        return h('div', { className: 'ocgo-connect-wrap' },
+          h('div', { className: 'ocgo-card ocgo-connect-card' },
+            h('div', { className: 'ocgo-eyebrow' }, 'Connection'),
+            h('h2', { className: 'ocgo-connect-title' }, 'Connect your OpenCode Go key'),
+            h('p', { className: 'ocgo-connect-body' },
+              'Needs a read-only API key from OpenCode Go (Console → Go → API keys, Usage:Read is enough). It is stored securely and used directly for exact Console dollars.'),
+            h('form', { className: 'ocgo-form', onSubmit: submit },
+              h('input', {
+                className: 'ocgo-input',
+                type: 'password',
+                autoComplete: 'off',
+                spellCheck: false,
+                placeholder: 'oc_sk_…',
+                value: key,
+                onChange: (event) => setKey(event.target.value),
+                'aria-label': 'OpenCode Go API key',
+              }),
+              h('button', { className: 'ocgo-btn ocgo-btn-primary', type: 'submit', disabled: busy || !key.trim() },
+                busy ? 'Connecting…' : 'Save and connect')),
+            h('div', { className: 'ocgo-form-hint' },
+              'Copy a read-only key from the OpenCode Console under Go → API keys. ',
+              h('a', { href: 'https://opencode.ai/console/go', target: '_blank', rel: 'noreferrer', style: { color: 'var(--dsw-alias-brand-primary)' } }, 'Open Console → Go → API keys')),
+            (localError || error) ? h('div', { className: 'ocgo-error' }, localError || error) : null))
+      }
 
-      return h('div', { className: 'ocgo-connect-wrap' },
-        h('div', { className: 'ocgo-card ocgo-connect-card' },
-          h('div', { className: 'ocgo-eyebrow' }, 'Connection'),
-          h('h2', { className: 'ocgo-connect-title' }, 'Connect your OpenCode Go key'),
-          h('p', { className: 'ocgo-connect-body' },
-            'Paste an OpenCode API key (Console → Go → API keys, Usage:Read is enough). It is stored in the Harness credential store and used directly for exact Console dollars.'),
-          h('form', { className: 'ocgo-form', onSubmit: submit },
-            h('input', {
-              className: 'ocgo-input',
-              type: 'password',
-              autoComplete: 'off',
-              spellCheck: false,
-              placeholder: 'oc_…',
-              value: key,
-              onChange: (event) => setKey(event.target.value),
-              'aria-label': 'OpenCode Go API key',
-            }),
-            h('button', { className: 'ocgo-btn ocgo-btn-primary', type: 'submit', disabled: busy || !key.trim() },
-              busy ? 'Connecting…' : 'Save and connect')),
-          h('div', { className: 'ocgo-form-hint' },
-            'Copy a key from the OpenCode Console under Go → API keys. ',
-            h('a', { href: 'https://opencode.ai/console/go', target: '_blank', rel: 'noreferrer', style: { color: 'var(--dsw-alias-brand-primary)' } }, 'Open the Console')),
-          (localError || error) ? h('div', { className: 'ocgo-error' }, localError || error) : null))
-    }
-
-    function KeyManager({ snapshot, onConnected }) {
-      const { key, setKey, busy, localError, submit } = useKeyForm(onConnected)
       return h('section', { className: 'ocgo-section' },
         h('div', { className: 'ocgo-section-head' },
           h('div', null,
             h('h2', { className: 'ocgo-section-title' }, 'API key'),
             h('p', { className: 'ocgo-section-sub' },
               snapshot?.auth?.key?.configured
-                ? `Key saved (${snapshot.auth.key.source || 'stored'}) · ${snapshot?.auth?.console?.configured ? `Console ${snapshot.auth.console.via || ''} linked` : 'Console not linked — paste a Usage:Read key below'}`
-                : 'No key saved — paste a Usage:Read key below'))),
+                ? `Key saved (${snapshot.auth.key.source || 'stored securely'}) · ${snapshot?.auth?.console?.configured ? `Console ${snapshot.auth.console.via || ''} linked` : 'Console not linked — paste a read-only key below'}`
+                : 'Needs a read-only API key from OpenCode Go — paste it below, it is stored securely.'))),
         h('div', { className: 'ocgo-card' },
           h('form', { className: 'ocgo-form', onSubmit: submit },
             h('input', {
@@ -680,7 +678,7 @@ window.__ModuleLoader__.load({
             h('button', { className: 'ocgo-btn ocgo-btn-primary', type: 'submit', disabled: busy || !key.trim() },
               busy ? 'Saving…' : snapshot?.auth?.key?.configured ? 'Replace key' : 'Save key')),
           h('div', { className: 'ocgo-form-hint' },
-            'Needs Usage:Read (owner/admin → Restricted). Member default keys (Models:Request only) give percentages but 403 on Console. ',
+            'Needs a read-only key (Usage:Read; owner/admin → Restricted). Member default keys (Models:Request only) give percentages but 403 on Console. ',
             h('a', { href: 'https://opencode.ai/console/go', target: '_blank', rel: 'noreferrer', style: { color: 'var(--dsw-alias-brand-primary)' } }, 'Open Console → Go → API keys')),
           (localError) ? h('div', { className: 'ocgo-error' }, localError) : null))
     }
@@ -1005,7 +1003,7 @@ window.__ModuleLoader__.load({
             ? h('div', { style: { display: 'grid', gap: 12 } },
               h('div', { className: 'ocgo-skeleton' }),
               h('div', { className: 'ocgo-skeleton', style: { height: 140 } }))
-            : h(ConnectView, { snapshot: null, onConnected: connected, error: error || 'The panel could not load OpenCode Go data.' }))
+            : h(KeyManager, { snapshot: null, onConnected: connected, hero: true, error: error || 'The panel could not load OpenCode Go data.' }))
       }
 
       const critical = []
@@ -1036,7 +1034,7 @@ window.__ModuleLoader__.load({
         return h(Shell, null,
           h(Header, { snapshot, loading, onRefresh: refresh }),
           error ? h(Banner, { tone: 'error' }, error) : null,
-          h(ConnectView, { snapshot, onConnected: connected, error: error }))
+          h(KeyManager, { snapshot, onConnected: connected, hero: true, error: error }))
       }
 
       return h(Shell, null,
