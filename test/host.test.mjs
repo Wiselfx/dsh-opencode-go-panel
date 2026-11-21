@@ -126,7 +126,7 @@ test('usage route requires a saved key and a valid range', async () => {
   assert.equal(missingKey.status, 400)
   assert.equal(missingKey.body.error, 'NO_KEY')
   const invalidRange = await invoke(routes, '/_dsh/opencode-go/usage', {
-    url: '/_dsh/opencode-go/usage?range=6m',
+    url: '/_dsh/opencode-go/usage?range=180d',
   })
   assert.equal(invalidRange.status, 400)
   assert.equal(invalidRange.body.error, 'INVALID_RANGE')

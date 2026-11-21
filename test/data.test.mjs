@@ -59,6 +59,44 @@ const USAGE_CSV = [
   '',
 ].join('\r\n')
 
+const USAGE_SUMMARY = {
+  totalRequests: '17',
+  totalInputTokens: '1600',
+  totalOutputTokens: '3200',
+  totalCacheReadTokens: '3300',
+  totalCacheWrite5mTokens: '40',
+  totalCacheWrite1hTokens: '60',
+  totalCostMicroCents: '400000000',
+}
+
+const USAGE_MODELS = {
+  items: [
+    {
+      model: 'deepseek-v4.1-flash',
+      provider: 'opencode-go',
+      totalRequests: '12',
+      totalInputTokens: '1100',
+      totalOutputTokens: '2200',
+      totalCacheReadTokens: '3300',
+      totalCacheWrite5mTokens: '40',
+      totalCacheWrite1hTokens: '60',
+      totalCostMicroCents: '300000000',
+    },
+    {
+      model: 'glm-5.3',
+      provider: 'opencode-go',
+      totalRequests: '5',
+      totalInputTokens: '500',
+      totalOutputTokens: '1000',
+      totalCacheReadTokens: '0',
+      totalCacheWrite5mTokens: '0',
+      totalCacheWrite1hTokens: '0',
+      totalCostMicroCents: '100000000',
+    },
+  ],
+  pageInfo: { page: 1, pageSize: 100, total: 2, pageCount: 1 },
+}
+
 const BILLING = {
   billingMode: 'prepaid',
   mode: 'pay-as-you-go',
@@ -140,7 +178,7 @@ function createContext({ key = null, withStore = true } = {}) {
 /** Mock the four OpenCode endpoints; each status is configurable per test. */
 function mockApi(t, {
   status = 200, usage = 200, models = 200, authedModels = 200, modelData = MODELS.data,
-  usageExport = 200, usageCsv = USAGE_CSV,
+  usageExport = 200, usageCsv = USAGE_CSV, aggregateStatus = 200,
 } = {}) {
   const calls = []
   t.mock.method(globalThis, 'fetch', async (input, init = {}) => {
@@ -154,6 +192,11 @@ function mockApi(t, {
       return usageExport === 200
         ? new Response(usageCsv, { status: 200, headers: { 'content-type': 'text/csv; charset=utf-8' } })
         : json({ error: 'usage export unavailable' }, usageExport)
+    }
+    if (url.includes('/console/api/usage/summary') || url.includes('/console/api/usage/models')) {
+      return aggregateStatus === 200
+        ? json(url.includes('/summary') ? USAGE_SUMMARY : USAGE_MODELS)
+        : json({ error: 'aggregate unavailable' }, aggregateStatus)
     }
     if (url.endsWith('/console/api/billing/status')) {
       return status === 200 ? json(BILLING) : json({ error: 'billing unavailable' }, status)
@@ -445,12 +488,35 @@ test('official usage export aggregates tokens and amount by model and range', as
     costUsd: 3.5,
   })
   assert.deepEqual(today.coverage, { from: '2026-11-21', to: '2026-11-21', days: 1 })
+})
 
-  const ninety = await provider.getUsage('90d')
-  assert.equal(ninety.totals.requests, 25)
-  assert.ok(Math.abs(ninety.totals.costUsd - 4.71) < 1e-9)
-  assert.deepEqual(ninety.byModel.map((row) => row.model), ['deepseek-v4.1-flash', 'glm-5.3', 'kimi-k3'])
-  assert.deepEqual(ninety.coverage, { from: '2026-09-01', to: '2026-11-21', days: 4 })
+test('six-month and all-time ranges use the aggregate endpoints', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 10, 21, 10, 30, 0) })
+  const calls = mockApi(t)
+  const provider = createProvider(createContext({ key: KEY }), {})
+
+  const six = await provider.getUsage('6m')
+  assert.equal(six.range, '6m')
+  assert.equal(six.coverage, null)
+  assert.equal(six.from, null)
+  assert.deepEqual(six.totals, {
+    requests: 17,
+    inputTokens: 1600,
+    outputTokens: 3200,
+    cacheReadTokens: 3300,
+    cacheWriteTokens: 100,
+    tokens: 8200,
+    costUsd: 4,
+  })
+  assert.deepEqual(six.byModel.map((row) => [row.model, row.provider, row.requests, row.tokens, row.costUsd]), [
+    ['deepseek-v4.1-flash', 'opencode-go', 12, 6700, 3],
+    ['glm-5.3', 'opencode-go', 5, 1500, 1],
+  ])
+  const all = await provider.getUsage('all')
+  assert.equal(all.range, 'all')
+  assert.equal(all.totals.requests, 17)
+  assert.ok(calls.some((call) => call.url.includes('/console/api/usage/summary?range=6m')))
+  assert.ok(calls.some((call) => call.url.includes('/console/api/usage/models?range=all')))
 })
 
 test('usage history caches one export and refreshes on demand', async (t) => {
@@ -459,23 +525,31 @@ test('usage history caches one export and refreshes on demand', async (t) => {
   const provider = createProvider(createContext({ key: KEY }), {})
   await provider.getUsage('month')
   await provider.getUsage('today')
-  let exports = calls.filter((call) => call.url.includes('/v2/usage/export')).length
-  assert.equal(exports, 1)
+  assert.equal(calls.filter((call) => call.url.includes('/v2/usage/export')).length, 1)
+  await provider.getUsage('6m')
+  await provider.getUsage('all')
+  const summaries = () => calls.filter((call) => call.url.includes('/console/api/usage/summary')).length
+  const models = () => calls.filter((call) => call.url.includes('/console/api/usage/models')).length
+  assert.equal(summaries(), 2)
+  assert.equal(models(), 2)
   await provider.getUsage('month', true)
-  exports = calls.filter((call) => call.url.includes('/v2/usage/export')).length
-  assert.equal(exports, 2)
+  assert.equal(calls.filter((call) => call.url.includes('/v2/usage/export')).length, 2)
 })
 
 test('usage history rejects invalid ranges and reports export failures', async (t) => {
   t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 10, 21, 10, 30, 0) })
-  mockApi(t, { usageExport: 403 })
+  mockApi(t, { usageExport: 403, aggregateStatus: 403 })
   const provider = createProvider(createContext({ key: KEY }), {})
   await assert.rejects(
-    () => provider.getUsage('6m'),
+    () => provider.getUsage('180d'),
     (error) => error instanceof PanelApiError && error.code === 'INVALID_RANGE',
   )
   await assert.rejects(
     () => provider.getUsage('month'),
+    (error) => error instanceof PanelApiError && error.code === 'USAGE_PERMISSION',
+  )
+  await assert.rejects(
+    () => provider.getUsage('6m'),
     (error) => error instanceof PanelApiError && error.code === 'USAGE_PERMISSION',
   )
 })

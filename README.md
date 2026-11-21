@@ -21,10 +21,12 @@ OpenCode Go APIs on the Host; the browser never receives the API key.
   **Off-peak** when no peak pricing is active and **N× peak now** when it is.
 - **Billing** from `GET /console/api/billing/status`: balance, available
   credit, mode, and auto-recharge/purchase flags.
-- **Usage history** from the official workspace export
-  (`GET /console/api/v2/usage/export?range=90d`): requests, input/output/cache
-  tokens, and OpenCode's exact usage amount, grouped by model, with **Today**,
-  **This month**, and **Last 90 days** ranges. Daily totals may lag.
+- **Usage history** from OpenCode's official workspace usage APIs: requests,
+  input/output/cache tokens, and OpenCode's exact usage amount, grouped by
+  model, with **Today**, **This month**, **Last 6 months**, and **All time**
+  ranges. Today and This month use the daily CSV export
+  (`/console/api/v2/usage/export?range=90d`); six-month and all-time totals use
+  the Console summary and per-model endpoints. Daily totals may lag.
 
 The model table is a plain catalog of base prices, not a per-model quota. The
 separate Usage section reports the workspace's per-model tokens and usage
@@ -71,9 +73,10 @@ OpenCode.
   official usage export, never from local session logs.
 - Without the Console status API, only percentages and the model catalog are
   available; dollar amounts are omitted rather than estimated.
-- OpenCode's usage export covers at most 90 days. Six-month and all-time usage
-  history is not available from the API, so the panel does not fabricate it.
-  Request logs retain only 30 days and are not used for the report.
+- Daily usage history covers at most 90 days. Six-month and all-time ranges use
+  the Console's aggregate endpoints, so they have totals and per-model rows but
+  no daily breakdown. Request logs retain only 30 days and are not used for the
+  report.
 - The exported CSV contains per-user fields; the Host aggregates them and never
   sends user names, ids, or raw rows to the browser. The reported amount is
   OpenCode's official usage value for those requests; Go usage counts against

@@ -12,14 +12,14 @@
 const DEFAULT_API_ORIGIN = 'https://opencode.ai'
 /** The panel's own credential record: `<package>/<id>` in the Harness record space. */
 const CREDENTIAL_RECORD = 'dsh-opencode-go-panel/api-key'
-const USER_AGENT = 'dsh-opencode-go-panel/1.4.0'
+const USER_AGENT = 'dsh-opencode-go-panel/1.5.0'
 const MICROCENTS_PER_USD = 100_000_000
 const DAY = 86_400_000
 const HOUR = 3_600_000
 const MIN_REFRESH_SECONDS = 60
 const USAGE_CACHE_MS = 60_000
 const USAGE_MAX_BYTES = 16 * 1024 * 1024
-const USAGE_RANGES = new Set(['today', 'month', '90d'])
+const USAGE_RANGES = new Set(['today', 'month', '6m', 'all'])
 const USAGE_COLUMNS = [
   'day', 'provider', 'model', 'requests', 'input_tokens', 'output_tokens',
   'cache_read_tokens', 'cache_write_5m_tokens', 'cache_write_1h_tokens', 'cost_micro_cents',
@@ -594,6 +594,103 @@ async function fetchUsageRows(config, key) {
   return parseUsageCsv(text)
 }
 
+function usageHttpError(status) {
+  const code = status === 401 || status === 403
+    ? 'USAGE_PERMISSION'
+    : status === 429 ? 'USAGE_RATE_LIMITED' : 'USAGE_UPSTREAM'
+  return new PanelApiError(code, 502, `HTTP ${status}`)
+}
+
+/** The summary and models endpoints return every number as a decimal string. */
+function totalsFromUsageRecord(record) {
+  const read = (field) => csvInteger(record?.[field])
+  const requests = read('totalRequests')
+  const inputTokens = read('totalInputTokens')
+  const outputTokens = read('totalOutputTokens')
+  const cacheReadTokens = read('totalCacheReadTokens')
+  const cacheWrite5m = read('totalCacheWrite5mTokens')
+  const cacheWrite1h = read('totalCacheWrite1hTokens')
+  const costMicroCents = read('totalCostMicroCents')
+  if ([requests, inputTokens, outputTokens, cacheReadTokens, cacheWrite5m, cacheWrite1h, costMicroCents]
+    .some((value) => value === null)) {
+    throw new PanelApiError('USAGE_INVALID', 502)
+  }
+  const cacheWriteTokens = cacheWrite5m + cacheWrite1h
+  return {
+    requests,
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    tokens: inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens,
+    costUsd: costMicroCents / MICROCENTS_PER_USD,
+  }
+}
+
+async function readUsageSummary(config, key, range) {
+  try {
+    const result = await fetchJson(
+      `${config.apiOrigin}/console/api/usage/summary?range=${range}`,
+      authorization(key),
+      30_000,
+    )
+    if (!result.ok) throw usageHttpError(result.status)
+    if (!result.body) throw new PanelApiError('USAGE_INVALID', 502)
+    return totalsFromUsageRecord(result.body)
+  } catch (error) {
+    if (error instanceof PanelApiError) throw error
+    throw new PanelApiError('USAGE_NETWORK', 502, errorMessage(error))
+  }
+}
+
+async function readUsageModels(config, key, range) {
+  const rows = []
+  let page = 1
+  let pageCount = 1
+  try {
+    do {
+      const result = await fetchJson(
+        `${config.apiOrigin}/console/api/usage/models?range=${range}&pageSize=100&page=${page}`,
+        authorization(key),
+        30_000,
+      )
+      if (!result.ok) throw usageHttpError(result.status)
+      if (!result.body || !Array.isArray(result.body.items)) {
+        throw new PanelApiError('USAGE_INVALID', 502)
+      }
+      for (const item of result.body.items) {
+        const model = String(item?.model || '').trim().slice(0, 200)
+        const provider = String(item?.provider || '').trim().slice(0, 200)
+        if (!model || !provider) throw new PanelApiError('USAGE_INVALID', 502)
+        rows.push({ provider, model, ...totalsFromUsageRecord(item) })
+      }
+      const reportedPages = Number(result.body.pageInfo?.pageCount)
+      if (Number.isSafeInteger(reportedPages) && reportedPages > 20) {
+        throw new PanelApiError('USAGE_INVALID', 502)
+      }
+      pageCount = Number.isSafeInteger(reportedPages) && reportedPages > 0 ? reportedPages : 1
+      page += 1
+    } while (page <= pageCount)
+  } catch (error) {
+    if (error instanceof PanelApiError) throw error
+    throw new PanelApiError('USAGE_NETWORK', 502, errorMessage(error))
+  }
+  return rows
+}
+
+function buildAggregateReport(range, totals, models, now = Date.now()) {
+  return {
+    range,
+    generatedAt: now,
+    from: null,
+    to: null,
+    coverage: null,
+    totals,
+    byModel: [...models].sort((left, right) => right.costUsd - left.costUsd
+      || left.model.localeCompare(right.model)),
+  }
+}
+
 function emptyUsageTotals() {
   return {
     requests: 0,
@@ -650,7 +747,6 @@ function buildUsageReport(rows, range, now = Date.now()) {
     generatedAt: now,
     from,
     to: today,
-    apiLimitDays: 90,
     coverage: { from: firstDay, to: lastDay, days: days.size },
     totals,
     byModel: [...byModel.values()]
@@ -733,7 +829,8 @@ export function createProvider(ctx, rawConfig = {}) {
   let usageRows = null
   let usageRowsAt = 0
   let usageInflight = null
-  let usageInflightGeneration = 0
+  const usageAggregates = new Map()
+  const usageAggregateInflight = new Map()
 
   /** A credential change invalidates every snapshot and usage report built before it. */
   function invalidate() {
@@ -742,6 +839,8 @@ export function createProvider(ctx, rawConfig = {}) {
     usageRows = null
     usageRowsAt = 0
     usageInflight = null
+    usageAggregates.clear()
+    usageAggregateInflight.clear()
     generation += 1
   }
 
@@ -797,33 +896,66 @@ export function createProvider(ctx, rawConfig = {}) {
     return get(true)
   }
 
-  /** Official workspace usage history: one 90-day export, filtered to the requested range. */
+  /**
+   * Official workspace usage history.
+   * Today and This month come from the 90-day daily CSV; six months and all
+   * time come from the Console's aggregate summary and per-model endpoints.
+   */
   async function getUsage(range = 'month', force = false) {
     const selected = typeof range === 'string' ? range : 'month'
     if (!USAGE_RANGES.has(selected)) throw new PanelApiError('INVALID_RANGE', 400)
     const stored = await readStoredKey(ctx)
     if (!stored.key) throw new PanelApiError('NO_KEY', 400)
     const now = Date.now()
+    const buildGeneration = generation
+
+    if (selected === '6m' || selected === 'all') {
+      if (!force) {
+        const cached = usageAggregates.get(selected)
+        if (cached && now - cached.at < USAGE_CACHE_MS) return cached.report
+      }
+      let pending = usageAggregateInflight.get(selected)
+      if (!pending || pending.generation !== buildGeneration) {
+        const entry = { generation: buildGeneration, promise: null }
+        entry.promise = Promise.all([
+          readUsageSummary(config, stored.key, selected),
+          readUsageModels(config, stored.key, selected),
+        ])
+          .then(([totals, models]) => {
+            const report = buildAggregateReport(selected, totals, models)
+            if (entry.generation === generation) {
+              usageAggregates.set(selected, { report, at: Date.now() })
+            }
+            return report
+          })
+          .finally(() => {
+            if (usageAggregateInflight.get(selected) === entry) usageAggregateInflight.delete(selected)
+          })
+        usageAggregateInflight.set(selected, entry)
+        pending = entry
+      }
+      return pending.promise
+    }
+
     if (!force && usageRows && now - usageRowsAt < USAGE_CACHE_MS) {
       return buildUsageReport(usageRows, selected, now)
     }
-    const buildGeneration = generation
-    if (!usageInflight || usageInflightGeneration !== buildGeneration) {
-      const task = fetchUsageRows(config, stored.key)
+    if (!usageInflight || usageInflight.generation !== buildGeneration) {
+      const entry = { generation: buildGeneration, promise: null }
+      entry.promise = fetchUsageRows(config, stored.key)
         .then((rows) => {
-          if (buildGeneration === generation) {
+          if (entry.generation === generation) {
             usageRows = rows
             usageRowsAt = Date.now()
           }
           return rows
         })
         .finally(() => {
-          if (usageInflight === task) usageInflight = null
+          if (usageInflight === entry) usageInflight = null
         })
-      usageInflight = task
-      usageInflightGeneration = buildGeneration
+      usageInflight = entry
     }
-    const rows = await usageInflight
+    const rows = await usageInflight.promise
     return buildUsageReport(rows, selected, Date.now())
   }
 

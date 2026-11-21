@@ -83,11 +83,12 @@ window.__ModuleLoader__.load({
         ofLimit: 'of {limit}',
         ofPool: 'of the API pool',
         usage: 'Usage history',
-        usageSub: 'Official workspace export; may include other clients · UTC',
+        usageSub: 'Official workspace usage; may include other clients · UTC',
         usageRange: 'Usage range',
         rangeToday: 'Today',
         rangeMonth: 'This month',
-        range90d: 'Last 90 days',
+        range6m: 'Last 6 months',
+        rangeAll: 'All time',
         usageLoading: 'Loading usage…',
         usageTokens: 'Tokens',
         usageValue: 'Usage amount',
@@ -100,7 +101,7 @@ window.__ModuleLoader__.load({
         usageTotal: 'Total',
         usageCoverage: '{from} – {to} · {days} days',
         usageNoData: 'No usage was recorded for this range.',
-        usageLimitNote: 'Official daily totals may lag. OpenCode exports at most 90 days of usage history, so six-month and all-time totals are unavailable.',
+        usageLimitNote: 'Daily totals may lag. Today and This month use the official daily export; six-month and all-time totals use OpenCode’s aggregate endpoint.',
         usageValueNote: 'Usage amount is OpenCode’s official value for these requests; Go usage counts against the subscription allowance, not an extra charge.',
         models: 'Models',
         modelColumn: 'Model',
@@ -237,11 +238,12 @@ window.__ModuleLoader__.load({
         ofLimit: '共 {limit}',
         ofPool: '占 API 池',
         usage: '用量历史',
-        usageSub: '工作区官方导出，可能包含其他客户端 · UTC',
+        usageSub: '工作区官方用量，可能包含其他客户端 · UTC',
         usageRange: '用量范围',
         rangeToday: '今天',
         rangeMonth: '本月',
-        range90d: '最近 90 天',
+        range6m: '最近 6 个月',
+        rangeAll: '全部时间',
         usageLoading: '正在加载用量…',
         usageTokens: 'Token',
         usageValue: '用量金额',
@@ -254,7 +256,7 @@ window.__ModuleLoader__.load({
         usageTotal: '总计',
         usageCoverage: '{from} – {to} · {days} 天',
         usageNoData: '该范围内没有用量记录。',
-        usageLimitNote: '官方每日汇总可能有延迟。OpenCode 最多提供 90 天用量导出，因此无法显示六个月或全部历史。',
+        usageLimitNote: '每日汇总可能有延迟。今天和本月使用官方每日导出；六个月和全部时间使用 OpenCode 的汇总接口。',
         usageValueNote: '用量金额是 OpenCode 对这些请求的官方价值；Go 用量计入订阅配额，不是额外收费。',
         models: '模型',
         modelColumn: '模型',
@@ -515,7 +517,7 @@ window.__ModuleLoader__.load({
     .ocgo-error-detail { display: block; margin-top: 2px; color: var(--dsw-alias-label-secondary); }
     .ocgo-key-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--dsw-alias-border-l1); }
     .ocgo-tabs {
-      display: inline-flex; gap: 2px; padding: 2px;
+      display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px;
       border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-layer-2);
     }
     .ocgo-tab {
@@ -870,7 +872,7 @@ window.__ModuleLoader__.load({
       return { value, setValue, busy, removing, error, submit, remove }
     }
 
-    const USAGE_RANGE_KEYS = [['today', 'rangeToday'], ['month', 'rangeMonth'], ['90d', 'range90d']]
+    const USAGE_RANGE_KEYS = [['today', 'rangeToday'], ['month', 'rangeMonth'], ['6m', 'range6m'], ['all', 'rangeAll']]
 
     function useUsage(refreshToken) {
       const [range, setRange] = useState('month')
@@ -930,7 +932,14 @@ window.__ModuleLoader__.load({
     function UsageReport({ t, report }) {
       const totals = report.totals
       const coverage = report.coverage
-      const hasData = coverage.days > 0
+      const hasData = totals.requests > 0
+      const coverageText = coverage?.from
+        ? t('usageCoverage', {
+          from: fmtUtcDay(coverage.from),
+          to: fmtUtcDay(coverage.to),
+          days: coverage.days,
+        })
+        : null
       const parts = [
         ['usageInput', totals.inputTokens],
         ['usageOutput', totals.outputTokens],
@@ -952,13 +961,9 @@ window.__ModuleLoader__.load({
           h('div', { className: 'ocgo-usage-parts' }, parts.map(([key, value]) =>
             h('span', { key, className: 'ocgo-usage-part' },
               t(key), h('span', { className: 'ocgo-usage-part-value' }, fmtTokens(value))))),
-          h('p', { className: 'ocgo-usage-coverage' }, hasData
-            ? t('usageCoverage', {
-              from: fmtUtcDay(coverage.from),
-              to: fmtUtcDay(coverage.to),
-              days: coverage.days,
-            })
-            : t('usageNoData')),
+          (coverageText || !hasData)
+            ? h('p', { className: 'ocgo-usage-coverage' }, coverageText || t('usageNoData'))
+            : null,
           h('p', { className: 'ocgo-hint', style: { marginTop: 8 } }, t('usageValueNote')),
           h('p', { className: 'ocgo-hint', style: { marginTop: 4 } }, t('usageLimitNote'))),
         report.byModel.length > 0
@@ -976,7 +981,7 @@ window.__ModuleLoader__.load({
               h('tbody', null, report.byModel.map((row) => h('tr', { key: `${row.provider}/${row.model}` },
                 h('td', null,
                   h('span', { className: 'ocgo-model-name' }, row.model),
-                  row.provider && row.provider !== 'opencode'
+                  row.provider && !['opencode', 'opencode-go'].includes(row.provider)
                     ? h('span', { className: 'ocgo-model-id' }, row.provider)
                     : null),
                 h('td', { className: 'ocgo-num' }, fmtInt(row.requests)),
